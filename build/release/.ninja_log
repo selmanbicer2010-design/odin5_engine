@@ -1,8 +1,0 @@
-# ninja log v7
-7	1270	8120077154922552	CMakeFiles/odin.dir/main.cpp.obj	5414f6465a19546f
-1499	1989	8120945065244142	odin.exe	9ed5c3e23c7d885b
-18	1499	8120945050432879	CMakeFiles/odin.dir/src/main/main.cpp.obj	19c95122a8919800
-24	715	8123643904646889	CMakeFiles/odin.dir/src/platform/window/glfwwindowapi.cpp.obj	5de4f694e4bca2c3
-16	3332	8123643904566873	CMakeFiles/odin.dir/src/main/main.cpp.obj	3a2b897135bf7125
-20	3664	8123643904611885	CMakeFiles/odin.dir/src/platform/graphics/vulkangraphicsapi.cpp.obj	24dc7f529a8f4174
-3664	4103	8123643941051942	odin.exe	34e0cb11cee65b23

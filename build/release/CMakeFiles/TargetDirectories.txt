@@ -1,3 +1,0 @@
-C:/ZedProjects/odin5_engine/build/release/CMakeFiles/odin.dir
-C:/ZedProjects/odin5_engine/build/release/CMakeFiles/edit_cache.dir
-C:/ZedProjects/odin5_engine/build/release/CMakeFiles/rebuild_cache.dir
