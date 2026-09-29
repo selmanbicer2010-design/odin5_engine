@@ -1,0 +1,9 @@
+{
+    "name": "odin5-engine",
+    "version-string": "0.0.0",
+    "dependencies": [
+        "glm",
+        "glfw3",
+        "vulkan"
+    ]
+}

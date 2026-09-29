@@ -1,0 +1,8 @@
+# ninja log v7
+15	3100	8123632691503240	CMakeFiles/odin.dir/src/main/main.cpp.obj	9d269b63fe600b14
+3427	4027	8123632725620581	odin.exe	d7e798470576ae63
+53	901	8123632691878378	CMakeFiles/odin.dir/src/platform/window/glfwwindowapi.cpp.obj	4efa5c1220ffd661
+47	3426	8123632691818374	CMakeFiles/odin.dir/src/platform/graphics/vulkangraphicsapi.cpp.obj	e1268ca1da75f335
+11	2889	8123643662477842	CMakeFiles/odin.dir/src/main/main.cpp.obj	9d269b63fe600b14
+15	3184	8123643662517845	CMakeFiles/odin.dir/src/platform/graphics/vulkangraphicsapi.cpp.obj	e1268ca1da75f335
+3185	3623	8123643694212828	odin.exe	d7e798470576ae63

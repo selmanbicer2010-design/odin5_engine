@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/ZedProjects/odin5_engine/build/debug",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5_engine/include -isystem C:/ZedProjects/odin5_engine/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\main\\main.cpp.obj -c C:\\ZedProjects\\odin5_engine\\src\\main\\main.cpp",
+  "file": "C:/ZedProjects/odin5_engine/src/main/main.cpp",
+  "output": "C:/ZedProjects/odin5_engine/build/debug/CMakeFiles/odin.dir/src/main/main.cpp.obj"
+}
+]

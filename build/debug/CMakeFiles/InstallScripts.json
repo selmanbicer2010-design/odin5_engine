@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/ZedProjects/odin5_engine/build/debug/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
