@@ -1,6 +1,5 @@
 #pragma once
 #include <GLFW/glfw3.h>
-#include "core/utilities.hpp"
 #include "core/enum.hpp"
 #include "platform/window/iwindowapi.hpp"
 
@@ -24,6 +23,7 @@ namespace glfw {
         bool should_close();
         odin5::enm::error_t update();
         odin5::enm::error_t terminate();
+        glm::vec2 get_framebuffer_size();
         ~window_api_spec();
 
         GLFWwindow* get_glfw_native_window();

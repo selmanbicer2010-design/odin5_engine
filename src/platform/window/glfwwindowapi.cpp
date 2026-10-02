@@ -1,5 +1,6 @@
 #include "platform/window/glfwwindowapi.hpp"
 #include "core/enum.hpp"
+#include <GLFW/glfw3.h>
 
 odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform::window::window_create_info wci) {
     odin5::util::error_if(!glfwInit(), "failed to init glfw");
@@ -34,18 +35,24 @@ bool odin5::platform::window::glfw::window_api_spec::should_close() {
 
 odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::update() {
     glfwPollEvents();
-    return odin5::enm::ODIN5_ERROR_NONE;
+    return odin5::enm::err::NONE;
 }
 
 odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::terminate() {
     if (terminated_)
-        return odin5::enm::ODIN5_ERROR_WINDOW_API_ALREADY_TERMINATED;
+        return odin5::enm::err::WINDOW_API_ALREADY_TERMINATED;
 
     terminated_ = true;
     glfwDestroyWindow(glfw_.window_p);
     glfwTerminate();
 
-    return odin5::enm::ODIN5_ERROR_NONE;
+    return odin5::enm::err::NONE;
+}
+
+glm::vec2 odin5::platform::window::glfw::window_api_spec::get_framebuffer_size() {
+    int32_t x, y;
+    glfwGetFramebufferSize(glfw_.window_p, &x, &y);
+    return {x, y};
 }
 
 odin5::platform::window::glfw::window_api_spec::~window_api_spec() {

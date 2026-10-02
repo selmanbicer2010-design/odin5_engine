@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(odin5_engine
+project(odin5
     VERSION 0.0.0
     LANGUAGES CXX
 )
@@ -17,6 +17,7 @@ add_executable(odin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/graphics/vulkangraphicsapi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/window/glfwwindowapi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/file.cpp
 )
 
 target_include_directories(odin PRIVATE

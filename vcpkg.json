@@ -1,5 +1,5 @@
 {
-    "name": "odin5-engine",
+    "name": "odin5",
     "version-string": "0.0.0",
     "dependencies": [
         "glm",
