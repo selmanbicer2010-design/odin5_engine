@@ -1,30 +1,27 @@
-static float2 positions[3] = float2[](
-    float2(0.0, -0.5),
-    float2(0.5, 0.5),
-    float2(-0.5, 0.5)
-);
 
-static float3 colors[3] = float3[](
-    float3(1.0, 0.0, 0.0),
-    float3(0.0, 1.0, 0.0),
-    float3(0.0, 0.0, 1.0)
-);
+struct vs_input {
+    float3 in_pos;
+    float3 in_norm;
+    float2 in_uv;
+};
 
-struct VertexOutput {
-    float3 color;
-    float4 sv_position : SV_Position;
+struct vs_output {
+    float4 out_pos : SV_Position;
+    float3 out_norm;
+    float2 out_uv;
 };
 
 [shader("vertex")]
-VertexOutput vert_main(uint vid : SV_VertexID) {
-    VertexOutput output;
-    output.color = colors[vid];
-    output.sv_position = float4(positions[vid], 0.0, 1.0);
+vs_output vert_main(vs_input input) {
+    vs_output output;
+    output.out_pos = float4(input.in_pos, 1.0);
+    output.out_norm = input.in_norm;
+    output.out_uv = input.in_uv;
     return output;
 }
 
 [shader("fragment")]
-float4 frag_main(VertexOutput in_vert) : SV_Target {
-    float3 color = in_vert.color;
+float4 frag_main(vs_output in_vert) : SV_Target {
+    float3 color = in_vert.out_norm;
     return float4(color, 1.0);
 }

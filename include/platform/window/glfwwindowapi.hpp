@@ -1,6 +1,8 @@
 #pragma once
 #include <GLFW/glfw3.h>
+#include <glm/ext/vector_uint2_sized.hpp>
 #include "core/enum.hpp"
+#include "core/event.hpp"
 #include "platform/window/iwindowapi.hpp"
 
 namespace odin5 {
@@ -10,7 +12,7 @@ namespace glfw {
 
     struct glfw_state {
     public:
-        GLFWwindow* window_p;
+        GLFWwindow* window_p = nullptr;
     };
 
     class window_api_spec {
@@ -23,9 +25,9 @@ namespace glfw {
         bool should_close();
         odin5::enm::error_t update();
         odin5::enm::error_t terminate();
-        glm::vec2 get_framebuffer_size();
+        glm::u32vec2 get_framebuffer_size();
+        odin5::event::basic_event<glm::u32vec2> framebuffer_resized;
         ~window_api_spec();
-
         GLFWwindow* get_glfw_native_window();
     };
 

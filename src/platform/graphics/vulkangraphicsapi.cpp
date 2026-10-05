@@ -1,6 +1,8 @@
 #include "core/file.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <ratio>
 #include <stdexcept>
 #include <vector>
 #define GLFW_INCLUDE_VULKAN 1
@@ -15,6 +17,7 @@
 #include <vulkan/vulkan_raii.hpp>
 #include <iostream>
 #include <GLFW/glfw3.h>
+#include "core/math/spatial.hpp"
 #undef max
 
 namespace {
@@ -378,7 +381,12 @@ namespace {
         };
         vk::PipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
 
-        vk::PipelineVertexInputStateCreateInfo vertex_input_info;
+        vk::PipelineVertexInputStateCreateInfo vertex_input_info {
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &odin5::platform::graphics::vulkan::vulkan_state::vertex_binding_description,
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(odin5::platform::graphics::vulkan::vulkan_state::vertex_attribute_descriptions.size()),
+            .pVertexAttributeDescriptions = odin5::platform::graphics::vulkan::vulkan_state::vertex_attribute_descriptions.data(),
+        };
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly{
             .topology = vk::PrimitiveTopology::eTriangleList
@@ -471,6 +479,40 @@ namespace {
         vk_state.graphics_pipeline = vk_state.device.createGraphicsPipeline(std::nullptr_t{}, pipeline_create_info_chain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
+    uint32_t find_memory_type(vulkan_state_ref_t vk_state, uint32_t type_filter, vk::MemoryPropertyFlags properties) {
+        vk::PhysicalDeviceMemoryProperties mem_props = vk_state.physical_device.getMemoryProperties();
+        for (uint32_t i {0}; i < mem_props.memoryTypeCount; i++) {
+            if ( (type_filter & (1 << i)) and (mem_props.memoryTypes[i].propertyFlags & properties) == properties ) {
+                return i;
+            }
+        }
+        odin5::util::throw_except<std::runtime_error>("unable to find suitable memory type");
+        return 0;
+    }
+
+    void create_vertex_buffer(vulkan_state_ref_t vk_state) {
+        std::vector<odin5::math::spatial::vertex> vertices;
+        vk::BufferCreateInfo buffer_info{
+            .size = vertices.size() * sizeof(vertices[0]),
+            .usage = vk::BufferUsageFlagBits::eVertexBuffer,
+            .sharingMode = vk::SharingMode::eExclusive
+        };
+        vk_state.vertex_buffer = vk_state.device.createBuffer(buffer_info);
+        vk::MemoryRequirements mem_reqs = vk_state.vertex_buffer.getMemoryRequirements();
+
+        vk::MemoryAllocateInfo mem_alloc_info {
+            .allocationSize = mem_reqs.size,
+            .memoryTypeIndex = find_memory_type(vk_state, mem_reqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)
+        };
+
+        vk_state.device_memory = vk::raii::DeviceMemory(vk_state.device, mem_alloc_info);
+        vk_state.vertex_buffer.bindMemory(*vk_state.device_memory, 0);
+
+        void* data = vk_state.device_memory.mapMemory(0, buffer_info.size);
+        memcpy(data, vertices.data(), buffer_info.size);
+        vk_state.device_memory.unmapMemory();
+    }
+
     void create_command_pool(vulkan_state_ref_t vk_state) {
         vk::CommandPoolCreateInfo pool_info {
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
@@ -479,25 +521,30 @@ namespace {
         vk_state.command_pool = vk_state.device.createCommandPool(pool_info);
     }
 
-    void create_command_buffer(vulkan_state_ref_t vk_state) {
+    void create_command_buffers(vulkan_state_ref_t vk_state) {
         vk::CommandBufferAllocateInfo alloc_info{
             .commandPool = vk_state.command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
-            .commandBufferCount = 1
+            .commandBufferCount = odin5::platform::graphics::vulkan::vulkan_state::FIF
         };
-        vk_state.command_buffer = std::move(vk::raii::CommandBuffers(vk_state.device, alloc_info).front());
+        auto buffers = vk::raii::CommandBuffers(vk_state.device, alloc_info);
+        for (size_t i = 0; i < odin5::platform::graphics::vulkan::vulkan_state::FIF; i++) {
+             vk_state.command_buffers[i] = std::move(buffers[i]);
+        }
     }
 
     void create_synchronization_objects(vulkan_state_ref_t vk_state) {
-        vk_state.present_complete_semaphore = vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo());
         for (size_t i = 0; i < vk_state.swap_chain_images.size(); i++) {
             vk_state.render_finished_semaphores.emplace_back(vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo()));
         }
-        vk_state.draw_fence = vk::raii::Fence(vk_state.device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+        for (size_t i = 0; i < odin5::platform::graphics::vulkan::vulkan_state::FIF; i++) {
+            vk_state.present_complete_semaphores[i] = vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo{});
+            vk_state.flight_fences[i] = vk::raii::Fence(vk_state.device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+        }
+
     }
 
     void transition_image_layout(vulkan_state_ref_t vk_state,
-        uint32_t imageIndex,
 	    vk::ImageLayout old_layout, vk::ImageLayout new_layout,
 	    vk::AccessFlags2 src_access_mask, vk::AccessFlags2 dst_access_mask,
 	    vk::PipelineStageFlags2 src_stage_mask, vk::PipelineStageFlags2 dst_stage_mask) {
@@ -510,7 +557,7 @@ namespace {
             .newLayout = new_layout,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = vk_state.swap_chain_images[imageIndex],
+            .image = vk_state.swap_chain_images[vk_state.image_index],
             .subresourceRange {
                 .aspectMask     = vk::ImageAspectFlagBits::eColor,
                 .baseMipLevel   = 0,
@@ -524,14 +571,15 @@ namespace {
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers = &barrier
         };
-        vk_state.command_buffer.pipelineBarrier2(dependency_info);
+        vk_state.command_buffers[vk_state.frame_index].pipelineBarrier2(dependency_info);
     }
 
-    void record_command_buffer(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic, uint32_t image_index) {
-        vk_state.command_buffer.begin({});
+    void record_command_buffer(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic) {
+        auto& command_buffer = vk_state.command_buffers[vk_state.frame_index];
+        command_buffer.begin({});
 
         transition_image_layout(
-            vk_state, image_index,
+            vk_state,
             vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
             {}, vk::AccessFlagBits2::eColorAttachmentWrite,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eColorAttachmentOutput
@@ -539,7 +587,7 @@ namespace {
 
         vk::ClearValue clear_color = vk::ClearColorValue(dynamic.clear_color.x, dynamic.clear_color.y, dynamic.clear_color.z, dynamic.clear_color.w);
         vk::RenderingAttachmentInfo attachment_info {
-            .imageView   = vk_state.swap_chain_image_views[image_index],
+            .imageView   = vk_state.swap_chain_image_views[vk_state.image_index],
             .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
             .loadOp      = vk::AttachmentLoadOp::eClear,
             .storeOp     = vk::AttachmentStoreOp::eStore,
@@ -553,65 +601,71 @@ namespace {
             .pColorAttachments = &attachment_info
         };
 
-        vk_state.command_buffer.beginRendering(rendering_info);
+        command_buffer.beginRendering(rendering_info);
 
-        vk_state.command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *vk_state.graphics_pipeline);
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *vk_state.graphics_pipeline);
 
-        vk_state.command_buffer.setViewport(0, vk::Viewport(dynamic.viewport.x, dynamic.viewport.y, dynamic.viewport.z, dynamic.viewport.w, 0.0f, 1.0f));
-        vk_state.command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(dynamic.scissor.x, dynamic.scissor.y), vk::Extent2D(dynamic.scissor.z, dynamic.scissor.w)));
+        command_buffer.setViewport(0, vk::Viewport(dynamic.viewport.x, dynamic.viewport.y, dynamic.viewport.z, dynamic.viewport.w, 0.0f, 1.0f));
+        command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(dynamic.scissor.x, dynamic.scissor.y), vk::Extent2D(dynamic.scissor.z, dynamic.scissor.w)));
 
-        vk_state.command_buffer.draw(3, 1, 0, 0);
+        command_buffer.draw(3, 1, 0, 0);
 
-        vk_state.command_buffer.endRendering();
+        command_buffer.endRendering();
 
         transition_image_layout(
-            vk_state, image_index,
+            vk_state,
             vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
             vk::AccessFlagBits2::eColorAttachmentWrite, {},
             vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe
         );
 
-        vk_state.command_buffer.end();
+        command_buffer.end();
     }
 
     void draw_frame(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic) {
-        auto fence_result = vk_state.device.waitForFences(*vk_state.draw_fence, vk::True, UINT64_MAX);
+        auto& fence = vk_state.flight_fences[vk_state.frame_index];
+        auto fence_result = vk_state.device.waitForFences(*fence, vk::True, UINT64_MAX);
         if (fence_result != vk::Result::eSuccess) {
             odin5::util::throw_except<std::runtime_error>("failed to wait for fence");
         }
-        vk_state.device.resetFences(*vk_state.draw_fence);
+        vk_state.device.resetFences(*fence);
 
-        auto [result, image_index] = vk_state.swap_chain.acquireNextImage(UINT64_MAX, *vk_state.present_complete_semaphore, nullptr);
+        auto [result, img_idx] = vk_state.swap_chain.acquireNextImage(UINT64_MAX, *vk_state.present_complete_semaphores[vk_state.frame_index], nullptr);
+        vk_state.image_index = img_idx;
         if (result != vk::Result::eSuccess) {
             odin5::util::throw_except<std::runtime_error>("failed to get next image");
         }
 
-        record_command_buffer(vk_state, dynamic, image_index);
+        vk_state.command_buffers[vk_state.frame_index].reset();
+        record_command_buffer(vk_state, dynamic);
 
         vk::PipelineStageFlags wait_destination_stage_mask{vk::PipelineStageFlagBits::eColorAttachmentOutput};
         const vk::SubmitInfo submit_info {
             .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = &*vk_state.present_complete_semaphore,
+            .pWaitSemaphores      = &*vk_state.present_complete_semaphores[vk_state.frame_index],
             .pWaitDstStageMask    = &wait_destination_stage_mask,
             .commandBufferCount   = 1,
-            .pCommandBuffers      = &*vk_state.command_buffer,
+            .pCommandBuffers      = &*vk_state.command_buffers[vk_state.frame_index],
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = &*vk_state.render_finished_semaphores[image_index]
+            .pSignalSemaphores    = &*vk_state.render_finished_semaphores[vk_state.image_index]
         };
 
-        vk_state.queue.submit(submit_info, *vk_state.draw_fence);
+        vk_state.queue.submit(submit_info, *fence);
 
         const vk::PresentInfoKHR present_info_KHR {
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &*vk_state.render_finished_semaphores[image_index],
+            .pWaitSemaphores    = &*vk_state.render_finished_semaphores[vk_state.image_index],
             .swapchainCount     = 1,
             .pSwapchains        = &*vk_state.swap_chain,
-            .pImageIndices      = &image_index
+            .pImageIndices      = &vk_state.image_index
         };
 
         result = vk_state.queue.presentKHR(present_info_KHR);
 
+        vk_state.frame_index = (vk_state.frame_index + 1) % odin5::platform::graphics::vulkan::vulkan_state::FIF;
     }
+
+
 
 }
 
@@ -625,8 +679,9 @@ odin5::platform::graphics::vulkan::graphics_api_spec::graphics_api_spec(odin5::p
     create_swapchain(vulkan_, window_api);
     create_image_views(vulkan_);
     create_graphics_pipeline(vulkan_);
+    create_vertex_buffer(vulkan_);
     create_command_pool(vulkan_);
-    create_command_buffer(vulkan_);
+    create_command_buffers(vulkan_);
     create_synchronization_objects(vulkan_);
 
 }

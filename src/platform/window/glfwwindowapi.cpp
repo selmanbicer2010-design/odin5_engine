@@ -1,9 +1,20 @@
 #include "platform/window/glfwwindowapi.hpp"
 #include "core/enum.hpp"
+#include "core/utilities.hpp"
 #include <GLFW/glfw3.h>
+#include <stdexcept>
+#include <algorithm>
+
+namespace{
+    odin5::platform::window::glfw::window_api_spec& api_from_window(GLFWwindow* window_p) {
+        return *static_cast<odin5::platform::window::glfw::window_api_spec*>(glfwGetWindowUserPointer(window_p));
+    }
+}
 
 odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform::window::window_create_info wci) {
-    odin5::util::error_if(!glfwInit(), "failed to init glfw");
+    if (!glfwInit()) {
+        odin5::util::throw_except<std::runtime_error>("failed to init glfw");
+    }
 
     if constexpr (odin5::enm::active_graphics_api != odin5::enm::graphics_api_identifiers::opengl) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -17,16 +28,19 @@ odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform:
         nullptr
     );
 
-    odin5::util::error_if(!glfw_.window_p, "failed to init window");
-
     if (!glfw_.window_p) {
         terminate();
-        return;
+        odin5::util::throw_except<std::runtime_error>("failed to init window");
     }
 
     if constexpr (odin5::enm::active_graphics_api == odin5::enm::graphics_api_identifiers::opengl) {
         glfwMakeContextCurrent(glfw_.window_p);
     }
+
+    glfwSetWindowUserPointer(glfw_.window_p, this);
+    glfwSetFramebufferSizeCallback(glfw_.window_p, [](GLFWwindow* wp, int x, int y){ api_from_window(wp).framebuffer_resized.fire(glm::u32vec2{x, y}); });
+
+    glfwSetWindowPos(glfw_.window_p, wci.window_pos.x, wci.window_pos.y);
 }
 
 bool odin5::platform::window::glfw::window_api_spec::should_close() {
@@ -43,16 +57,18 @@ odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::terminate() 
         return odin5::enm::err::WINDOW_API_ALREADY_TERMINATED;
 
     terminated_ = true;
-    glfwDestroyWindow(glfw_.window_p);
+    if (glfw_.window_p) {
+        glfwDestroyWindow(glfw_.window_p);
+    }
     glfwTerminate();
 
     return odin5::enm::err::NONE;
 }
 
-glm::vec2 odin5::platform::window::glfw::window_api_spec::get_framebuffer_size() {
+glm::u32vec2 odin5::platform::window::glfw::window_api_spec::get_framebuffer_size() {
     int32_t x, y;
     glfwGetFramebufferSize(glfw_.window_p, &x, &y);
-    return {x, y};
+    return glm::u32vec2{x, y};
 }
 
 odin5::platform::window::glfw::window_api_spec::~window_api_spec() {

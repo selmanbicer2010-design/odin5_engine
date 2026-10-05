@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <cinttypes> // IWYU pragma: keep
 #include <concepts>
 #include <print>
@@ -10,10 +11,30 @@
 namespace odin5{
 namespace util{
 
+    struct null_t {
+        template <typename... args_t>
+        null_t(args_t...) {}
+    };
+
+    template <typename... args_t>
+    struct static_portable_pack {};
+
+    template <int32_t the_odr_violation_station = 0>
+    double unix_time() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
     template <typename... args_t>
     constexpr void silence_compiler_unused(const args_t&...) {
 
     };
+
+    template <typename value_t, typename initializer_t, size_t... indices>
+    constexpr std::array<value_t, sizeof...(indices)> construct_array_as(std::index_sequence<indices...>) {
+        auto trick_compiler = [](size_t index, initializer_t initialized) constexpr { odin5::util::silence_compiler_unused(index); return initialized; };
+        std::array<value_t, sizeof...(indices)> arr{ (trick_compiler(indices, initializer_t{}))... };
+        return arr;
+    }
 
     template <typename T>
     constexpr std::string_view type_name() {
@@ -51,9 +72,15 @@ namespace util{
     };
 
     template <typename ret_t, typename... args_t>
+    using func_t = typename odin5::util::func<ret_t, args_t...>::t;
+
+    template <typename ret_t, typename... args_t>
     struct func_ptr {
         using t = ret_t(*)(args_t...);
     };
+
+    template <typename ret_t, typename... args_t>
+    using func_ptr_t = typename odin5::util::func_ptr<ret_t, args_t...>::t;
 
     template <class class_t, typename ret_t, typename... args_t>
     struct method_ptr {
@@ -61,15 +88,21 @@ namespace util{
     };
 
     template <class class_t, typename ret_t, typename... args_t>
+    using method_ptr_t = typename odin5::util::method_ptr<class_t, ret_t, args_t...>::t;
+
+    template <class class_t, typename ret_t, typename... args_t>
     struct const_method_ptr {
         using t = ret_t(class_t::*)(args_t...) const;
     };
 
-    template <class class_t, typename method_t, typename ret_t, typename... args_t>
-    concept has_method = std::same_as<method_t, typename method_ptr<class_t, ret_t, args_t...>::t>;
+    template <class class_t, typename ret_t, typename... args_t>
+    using const_method_ptr_t = typename odin5::util::const_method_ptr<class_t, ret_t, args_t...>::t;
 
     template <class class_t, typename method_t, typename ret_t, typename... args_t>
-    concept has_const_method = std::same_as<method_t, typename const_method_ptr<class_t, ret_t, args_t...>::t>;
+    concept has_method = std::same_as<method_t, method_ptr_t<class_t, ret_t, args_t...>>;
+
+    template <class class_t, typename method_t, typename ret_t, typename... args_t>
+    concept has_const_method = std::same_as<method_t, const_method_ptr_t<class_t, ret_t, args_t...>>;
 
     template <class class_t>
     struct constexpr_class {
@@ -87,10 +120,14 @@ namespace util{
         };
         template <typename method_t, typename ret_t, typename... args_t>
         struct has_static_method {
-            static constexpr bool v = std::same_as<method_t, typename func_ptr<class_t, ret_t, args_t...>::t>;
+            static constexpr bool v = std::same_as<method_t, func_ptr_t<class_t, ret_t, args_t...>>;
         };
         template <typename member_t, member_t class_t::*member_ptr>
         struct has_member {
+            static constexpr bool v = true;
+        };
+        template <typename>
+        struct has_qualified_id { // use on templated functions that you just need to exist
             static constexpr bool v = true;
         };
     };
@@ -215,8 +252,22 @@ namespace util{
         std::vector<int32_t> b;
         std::vector<value_type> c;
 
-        [[nodiscard]] reference operator[](size_type i) { return c[a[i]]; }
-        [[nodiscard]] const_reference operator[](size_type i) const { return c[a[i]]; }
+        [[nodiscard]] reference operator[](size_type i) {
+            #ifdef ODIN5_DEBUG
+            if (out_of_bounds(i)) {
+                odin5::util::throw_except<std::out_of_range>("out of bounds access on unordered_vector");
+            }
+            #endif
+            return c[a[i]];
+        }
+        [[nodiscard]] const_reference operator[](size_type i) const {
+            #ifdef ODIN5_DEBUG
+            if (out_of_bounds(i)) {
+                odin5::util::throw_except<std::out_of_range>("out of bounds access on unordered_vector");
+            }
+            #endif
+            return c[a[i]];
+        }
 
         int32_t next_handle() const { return static_cast<int32_t>(a.size()); }
 
@@ -238,18 +289,21 @@ namespace util{
             return handle;
         }
 
-        value_type* find(int32_t i) {
-            if (a[i] == invalid_index) return nullptr;
-            return &(c[a[i]]);
+        bool out_of_bounds(int32_t i) { // This is bad for perfooooorrmmmmmaaaaanccee!
+            return (i < 0 || static_cast<size_type>(i) >= a.size() or a[i] == invalid_index);
         }
 
-        value_type* at(int32_t i) {
-            if (i < 0 || static_cast<size_type>(i) >= a.size() or a[i] == invalid_index) return nullptr;
+        bool in_bounds(int32_t i) {
+            return !out_of_bounds(i);
+        }
+
+        value_type* find(int32_t i) {
+            if (out_of_bounds(i)) return nullptr;
             return &(c[a[i]]);
         }
 
         void erase(int32_t i) {
-            if (a[i] == invalid_index) return;
+            if (out_of_bounds(i)) return;
             int32_t ai = a[i];
             int32_t bback = b.back();
             c[ai] = std::move(c.back());

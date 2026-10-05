@@ -1,16 +1,25 @@
 #pragma once
 #include <array>
 #include <cstddef>
+#include "core/utilities.hpp"
 #include "platform/graphics/igraphicsapi.hpp"
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
+#include <utility>
+#include "core/math/spatial.hpp"
 
 namespace odin5{
 namespace platform{
 namespace graphics{
 namespace vulkan{
 
+    struct gpu_memory_manager {};
+
     struct vulkan_state {
     public:
+        static constexpr int32_t MAX_FRAMES_IN_FLIGHT = 2;
+        static constexpr int32_t FIF = MAX_FRAMES_IN_FLIGHT;
+
         vk::raii::Context context{};
         vk::raii::Instance instance{std::nullptr_t{}};
 
@@ -29,16 +38,28 @@ namespace vulkan{
         vk::raii::PipelineLayout pipeline_layout{std::nullptr_t{}};
         vk::raii::Pipeline graphics_pipeline{std::nullptr_t{}};
 
+        vk::raii::Buffer vertex_buffer{std::nullptr_t{}};
+        vk::raii::DeviceMemory device_memory{std::nullptr_t{}};
+
         vk::raii::CommandPool command_pool{std::nullptr_t{}};
-        vk::raii::CommandBuffer command_buffer{std::nullptr_t{}};
+        std::array<vk::raii::CommandBuffer, FIF> command_buffers {odin5::util::construct_array_as<vk::raii::CommandBuffer, std::nullptr_t>(std::make_index_sequence<FIF>{})};
 
-        vk::raii::Semaphore present_complete_semaphore{std::nullptr_t{}};
-        std::vector<vk::raii::Semaphore> render_finished_semaphores;
-        vk::raii::Fence draw_fence{std::nullptr_t{}};
+        std::array<vk::raii::Semaphore, FIF> present_complete_semaphores {odin5::util::construct_array_as<vk::raii::Semaphore, std::nullptr_t>(std::make_index_sequence<FIF>{})};
+        std::vector<vk::raii::Semaphore> render_finished_semaphores{};
+        std::array<vk::raii::Fence, FIF> flight_fences {odin5::util::construct_array_as<vk::raii::Fence, std::nullptr_t>(std::make_index_sequence<FIF>{})};
 
-        //uint32_t image_index = 0;
+        uint32_t frame_index = 0;
+        uint32_t image_index = 0;
 
         uint32_t queue_idx = UINT32_MAX;
+
+        static constexpr vk::VertexInputBindingDescription vertex_binding_description = {.binding = 0, .stride = sizeof(odin5::math::spatial::vertex), .inputRate = vk::VertexInputRate::eVertex};
+
+        static constexpr std::array<vk::VertexInputAttributeDescription, 3> vertex_attribute_descriptions = {{
+            {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(odin5::math::spatial::vertex, position)},
+            {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(odin5::math::spatial::vertex, normal)},
+            {.location = 2, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(odin5::math::spatial::vertex, uv)}
+            }};
 
         #ifdef ODIN5_DEBUG
         static constexpr bool using_validation_layers = true;
