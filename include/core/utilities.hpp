@@ -1,12 +1,16 @@
 #pragma once
+#include <array>
 #include <chrono>
 #include <cinttypes> // IWYU pragma: keep
+#include <complex>
 #include <concepts>
 #include <print>
 #include <source_location>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 namespace odin5{
 namespace util{
@@ -28,6 +32,11 @@ namespace util{
     constexpr void silence_compiler_unused(const args_t&...) {
 
     };
+
+    template<typename value_type, value_type... args>
+    constexpr std::array<value_type, sizeof...(args)> make_inferred_array() {
+        return { args... };
+    }
 
     template <typename value_t, typename initializer_t, size_t... indices>
     constexpr std::array<value_t, sizeof...(indices)> construct_array_as(std::index_sequence<indices...>) {
@@ -155,9 +164,50 @@ namespace util{
         explicit operator bool() const {
             return value != default_value;
         }
+        explicit operator int32_t() const {
+            return value;
+        }
     };
 
-    template <class value_ty>
+    template <typename val_t>
+    struct type_tuple_leaf {
+        val_t val;
+    };
+
+    template <typename... args_t>
+    class type_tuple : public type_tuple_leaf<args_t>... {
+    public:
+        template <typename val_t>
+        val_t& get() {
+            return static_cast<type_tuple_leaf<val_t>*>(this)->val;
+        }
+    };
+
+    template <int32_t index, typename val_t>
+    struct index_tuple_leaf {
+        val_t val;
+    };
+
+    template <typename i_seq, typename... args_t>
+    struct index_tuple_impl;
+
+    template <size_t... indices, typename... args_t>
+    struct index_tuple_impl<std::index_sequence<indices...>, args_t...> : public index_tuple_leaf<indices, args_t>... {
+        template <int32_t index>
+        auto& get() {
+            return get_leaf<index>(*this);
+        }
+
+        template <int32_t index, typename t>
+        t& get_leaf(index_tuple_leaf<index, t>& leaf) {
+            return leaf.val;
+        }
+    };
+
+    template <typename... args_t>
+    using index_tuple = index_tuple_impl<std::index_sequence_for<args_t...>, args_t...>;
+
+    template <class value_ty, typename integer_like_t = int32_t>
     class sequential_unordered_map {
     using value_type = value_ty;
     public:
@@ -173,37 +223,37 @@ namespace util{
         std::unordered_map<int32_t, value_type>& unordered_map() {
             return data_;
         }
-        int32_t current_id() {
+        integer_like_t current_id() {
             return counter_ - 1;
         }
-        const value_type& operator[](int32_t hash) const {
-            return data_.at(hash);
+        const value_type& operator[](integer_like_t hash) const {
+            return data_.at(static_cast<int32_t>(hash));
         }
-        const value_type* find(int32_t key) const {
-            auto it = data_.find(key);
+        const value_type* find(integer_like_t key) const {
+            auto it = data_.find(static_cast<int32_t>(key));
             if (it != data_.end()) {
                 return &(it->second);
             }
             return nullptr;
         }
-        value_type* find(int32_t key) {
-            auto it = data_.find(key);
+        value_type* find(integer_like_t key) {
+            auto it = data_.find(static_cast<int32_t>(key));
             if (it != data_.end()) {
                 return &(it->second);
             }
             return nullptr;
         }
-        void erase(int32_t key) {
-            data_.erase(key);
+        void erase(integer_like_t key) {
+            data_.erase(static_cast<int32_t>(key));
         }
         [[nodiscard("value is left dangling without taking key")]]
-        int32_t push(const value_type& value) {
+        integer_like_t push(const value_type& value) {
             int32_t key = counter_++;
             data_.insert({key, value});
             return key;
         }
         [[nodiscard("value is left dangling without taking key")]]
-        int32_t push(value_type&& value) {
+        integer_like_t push(value_type&& value) {
             int32_t key = counter_++;
             data_.emplace(key, std::move(value));
             return key;

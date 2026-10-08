@@ -1,3 +1,7 @@
+#include <cstddef>
+#include <new>
+#define GLFW_INCLUDE_VULKAN 1
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include "core/file.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -5,8 +9,6 @@
 #include <ratio>
 #include <stdexcept>
 #include <vector>
-#define GLFW_INCLUDE_VULKAN 1
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include "vulkan/vulkan.hpp"
 #include "core/enum.hpp"
 #include "core/utilities.hpp"
@@ -20,6 +22,18 @@
 #include "core/math/spatial.hpp"
 #undef max
 
+using namespace odin5::platform::graphics;
+
+using vulkan_state_ref_t = vulkan::vulkan_state&;
+using graphics_dynamic_info_ref_t = graphics_dynamic_info&;
+
+static constexpr auto vertices_2 = odin5::util::make_inferred_array<odin5::math::spatial::vertex,
+    { {0.f, -0.25f, 0.f}, {1.0f, 1.0f, 0.0f}, {} },
+    { {0.25f, 0.25f, 0.f}, {1.0f, 0.0f, 1.0f}, {} },
+    { {-0.25f, 0.25f, 0.f}, {0.0f, 1.0f, 1.0f}, {} }
+>();
+
+
 namespace {
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
                                                           vk::DebugUtilsMessageTypeFlagsEXT              type,
@@ -30,9 +44,6 @@ namespace {
       odin5::util::silence_compiler_unused(severity, pUserData);
       return vk::False;
     }
-
-    using vulkan_state_ref_t = odin5::platform::graphics::vulkan::vulkan_state&;
-    using graphics_dynamic_info_ref_t = odin5::platform::graphics::graphics_dynamic_info&;
 
     template <typename func>
     bool check_vk_validity_of(const std::vector<const char*>& arr0, const auto& arr1, func&& check) {
@@ -65,8 +76,8 @@ namespace {
 
     std::vector<const char*> create_vk_layers(vulkan_state_ref_t vk_state) {
         std::vector<const char*> layers;
-        if constexpr (odin5::platform::graphics::vulkan::vulkan_state::using_validation_layers) {
-            layers.insert(layers.end(), odin5::platform::graphics::vulkan::vulkan_state::validation_layers.begin(), odin5::platform::graphics::vulkan::vulkan_state::validation_layers.end());
+        if constexpr (vulkan::vulkan_state::using_validation_layers) {
+            layers.insert(layers.end(), vulkan::vulkan_state::validation_layers.begin(), vulkan::vulkan_state::validation_layers.end());
         }
         auto layer_props = vk_state.context.enumerateInstanceLayerProperties();
         check_vk_validity_of(layers, layer_props, [](const auto& a, const char* b){ return strcmp(a.layerName, b) == 0; });
@@ -75,7 +86,7 @@ namespace {
 
     std::vector<const char*> create_vk_extensions(vulkan_state_ref_t vk_state) {
         std::vector<const char*> extensions;
-        if constexpr (odin5::platform::graphics::vulkan::vulkan_state::using_validation_layers) {
+        if constexpr (vulkan::vulkan_state::using_validation_layers) {
             extensions.push_back(vk::EXTDebugUtilsExtensionName);
         }
 	    add_platform_specific_extensions(extensions);
@@ -84,7 +95,7 @@ namespace {
         return extensions;
     }
 
-    void create_instance(vulkan_state_ref_t vk_state, odin5::platform::graphics::graphics_create_info gci) {
+    void create_instance(vulkan_state_ref_t vk_state, graphics_create_info gci) {
         vk::ApplicationInfo app_info{
             .pApplicationName = gci.application_name.c_str(),
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -108,7 +119,7 @@ namespace {
     }
 
     void create_debug_msgr(vulkan_state_ref_t vk_state) {
-        if constexpr (odin5::platform::graphics::vulkan::vulkan_state::using_validation_layers) {
+        if constexpr (vulkan::vulkan_state::using_validation_layers) {
             vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
             vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
             vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
@@ -383,9 +394,9 @@ namespace {
 
         vk::PipelineVertexInputStateCreateInfo vertex_input_info {
             .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &odin5::platform::graphics::vulkan::vulkan_state::vertex_binding_description,
-            .vertexAttributeDescriptionCount = static_cast<uint32_t>(odin5::platform::graphics::vulkan::vulkan_state::vertex_attribute_descriptions.size()),
-            .pVertexAttributeDescriptions = odin5::platform::graphics::vulkan::vulkan_state::vertex_attribute_descriptions.data(),
+            .pVertexBindingDescriptions = &vulkan::vertex_binding_description,
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(vulkan::vertex_attribute_descriptions.size()),
+            .pVertexAttributeDescriptions = vulkan::vertex_attribute_descriptions.data(),
         };
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly{
@@ -490,27 +501,42 @@ namespace {
         return 0;
     }
 
-    void create_vertex_buffer(vulkan_state_ref_t vk_state) {
-        std::vector<odin5::math::spatial::vertex> vertices;
-        vk::BufferCreateInfo buffer_info{
-            .size = vertices.size() * sizeof(vertices[0]),
-            .usage = vk::BufferUsageFlagBits::eVertexBuffer,
-            .sharingMode = vk::SharingMode::eExclusive
-        };
-        vk_state.vertex_buffer = vk_state.device.createBuffer(buffer_info);
-        vk::MemoryRequirements mem_reqs = vk_state.vertex_buffer.getMemoryRequirements();
+    void create_memory_managers(vulkan_state_ref_t vk_state) {
+        vk_state.memory_manager = vulkan::gpu_memory_manager{vk_state};
+        vk_state.resource_manager = vulkan::gpu_resource_manager{vk_state};
+    }
 
-        vk::MemoryAllocateInfo mem_alloc_info {
-            .allocationSize = mem_reqs.size,
-            .memoryTypeIndex = find_memory_type(vk_state, mem_reqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)
+    void copy_buffer(vulkan_state_ref_t vk_state, vulkan::gpu_buffer& src, vulkan::gpu_buffer& dst, vk::DeviceSize size) {
+        vk::CommandBufferAllocateInfo alloc_info{
+            .commandPool = vk_state.command_pool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1
         };
 
-        vk_state.device_memory = vk::raii::DeviceMemory(vk_state.device, mem_alloc_info);
-        vk_state.vertex_buffer.bindMemory(*vk_state.device_memory, 0);
+        vk::raii::CommandBuffer command_copy_buffer =
+            std::move(vk_state.device.allocateCommandBuffers(alloc_info).front());
 
-        void* data = vk_state.device_memory.mapMemory(0, buffer_info.size);
-        memcpy(data, vertices.data(), buffer_info.size);
-        vk_state.device_memory.unmapMemory();
+        command_copy_buffer.begin({
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+        });
+
+        command_copy_buffer.copyBuffer(
+            *src,
+            *dst,
+            vk::BufferCopy{0, 0, size}
+        );
+
+        command_copy_buffer.end();
+
+        vk_state.queue.submit(
+            vk::SubmitInfo{
+                .commandBufferCount = 1,
+                .pCommandBuffers = &*command_copy_buffer
+            },
+            nullptr
+        );
+
+        vk_state.queue.waitIdle();
     }
 
     void create_command_pool(vulkan_state_ref_t vk_state) {
@@ -525,10 +551,10 @@ namespace {
         vk::CommandBufferAllocateInfo alloc_info{
             .commandPool = vk_state.command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
-            .commandBufferCount = odin5::platform::graphics::vulkan::vulkan_state::FIF
+            .commandBufferCount = vulkan::FIF
         };
         auto buffers = vk::raii::CommandBuffers(vk_state.device, alloc_info);
-        for (size_t i = 0; i < odin5::platform::graphics::vulkan::vulkan_state::FIF; i++) {
+        for (size_t i = 0; i < vulkan::FIF; i++) {
              vk_state.command_buffers[i] = std::move(buffers[i]);
         }
     }
@@ -537,7 +563,7 @@ namespace {
         for (size_t i = 0; i < vk_state.swap_chain_images.size(); i++) {
             vk_state.render_finished_semaphores.emplace_back(vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo()));
         }
-        for (size_t i = 0; i < odin5::platform::graphics::vulkan::vulkan_state::FIF; i++) {
+        for (size_t i = 0; i < vulkan::FIF; i++) {
             vk_state.present_complete_semaphores[i] = vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo{});
             vk_state.flight_fences[i] = vk::raii::Fence(vk_state.device, {.flags = vk::FenceCreateFlagBits::eSignaled});
         }
@@ -574,7 +600,7 @@ namespace {
         vk_state.command_buffers[vk_state.frame_index].pipelineBarrier2(dependency_info);
     }
 
-    void record_command_buffer(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic) {
+    void record_command_buffer(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic, draw_3d_submit_info_constref_t draw_info) {
         auto& command_buffer = vk_state.command_buffers[vk_state.frame_index];
         command_buffer.begin({});
 
@@ -608,7 +634,11 @@ namespace {
         command_buffer.setViewport(0, vk::Viewport(dynamic.viewport.x, dynamic.viewport.y, dynamic.viewport.z, dynamic.viewport.w, 0.0f, 1.0f));
         command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(dynamic.scissor.x, dynamic.scissor.y), vk::Extent2D(dynamic.scissor.z, dynamic.scissor.w)));
 
-        command_buffer.draw(3, 1, 0, 0);
+        for (auto& draw : draw_info) {
+            auto& buffer = vk_state.memory_manager.find_in_memory(vk_state.resource_manager.buffers[draw.mesh_idx]);
+            command_buffer.bindVertexBuffers(0, *buffer, {0});
+            command_buffer.draw(static_cast<uint32_t>(buffer.element_count), 1, 0, 0);
+        }
 
         command_buffer.endRendering();
 
@@ -622,7 +652,7 @@ namespace {
         command_buffer.end();
     }
 
-    void draw_frame(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic) {
+    void draw_frame(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic, draw_3d_submit_info_constref_t draw_info) {
         auto& fence = vk_state.flight_fences[vk_state.frame_index];
         auto fence_result = vk_state.device.waitForFences(*fence, vk::True, UINT64_MAX);
         if (fence_result != vk::Result::eSuccess) {
@@ -637,7 +667,7 @@ namespace {
         }
 
         vk_state.command_buffers[vk_state.frame_index].reset();
-        record_command_buffer(vk_state, dynamic);
+        record_command_buffer(vk_state, dynamic, draw_info);
 
         vk::PipelineStageFlags wait_destination_stage_mask{vk::PipelineStageFlagBits::eColorAttachmentOutput};
         const vk::SubmitInfo submit_info {
@@ -662,14 +692,198 @@ namespace {
 
         result = vk_state.queue.presentKHR(present_info_KHR);
 
-        vk_state.frame_index = (vk_state.frame_index + 1) % odin5::platform::graphics::vulkan::vulkan_state::FIF;
+        vk_state.frame_index = (vk_state.frame_index + 1) % vulkan::FIF;
     }
-
-
 
 }
 
-odin5::platform::graphics::vulkan::graphics_api_spec::graphics_api_spec(odin5::platform::graphics::graphics_create_info gci, odin5::platform::window::active_window_api& window_api) {
+vulkan::gpu_buffer::gpu_buffer(vulkan_state_ref_t vk_state, const gpu_buffer_create_info& gbci) :
+buffer_info({
+    .size = gbci.byte_size,
+    .usage = gbci.usage,
+    .sharingMode = vk::SharingMode::eExclusive
+}),
+vk_buffer(vk_state.device.createBuffer(buffer_info)),
+mem_reqs(vk_buffer.getMemoryRequirements()),
+alloc_info({
+    .allocationSize = mem_reqs.size,
+    .memoryTypeIndex = find_memory_type(vk_state, mem_reqs.memoryTypeBits, gbci.properties)
+}),
+byte_size(gbci.byte_size),
+element_count(gbci.element_count),
+data(gbci.data)
+{}
+
+vulkan::gpu_allocated_memory::gpu_allocated_memory(
+    vulkan_state& vk_state,
+    const vk::MemoryAllocateInfo& alloc_info
+) :
+    vk_state(&vk_state),
+    device_memory(vk::raii::DeviceMemory(vk_state.device, alloc_info)),
+    alloc_info(alloc_info)
+{}
+
+bool vulkan::gpu_allocated_memory::can_fit(const vulkan::gpu_buffer& buffer) {
+    vk::DeviceSize aligned_offset =
+            (offset + buffer.mem_reqs.alignment - 1)
+            / buffer.mem_reqs.alignment
+            * buffer.mem_reqs.alignment;
+
+    return aligned_offset + buffer.mem_reqs.size <= alloc_info.allocationSize;
+}
+
+int32_t vulkan::gpu_allocated_memory::insert_buffer(gpu_buffer&& buffer) {
+    #ifdef ODIN5_DEBUG
+    if (buffer.alloc_info.memoryTypeIndex != this->alloc_info.memoryTypeIndex) {
+        odin5::util::throw_except<std::runtime_error>("attempt to insert buffer into a memory block with different properties");
+    }
+    if (!can_fit(buffer)) {
+        odin5::util::throw_except<std::runtime_error>("not enough size in memory");
+    }
+    #endif
+    int32_t key = buffers.push_back(std::move(buffer));
+    auto& buffer_r = buffers.c.back();
+
+    offset = (offset + buffer_r.mem_reqs.alignment - 1) / buffer_r.mem_reqs.alignment * buffer_r.mem_reqs.alignment;
+    buffer_r->bindMemory(*device_memory, offset);
+    buffer_r.memory_offset = offset;
+
+    if (buffer_r.data) {
+        write_into_buffer(key, buffer_r.data);
+    }
+    offset += buffer_r.mem_reqs.size;
+    return key;
+}
+
+int32_t vulkan::gpu_allocated_memory::emplace_buffer(const gpu_buffer_create_info& create_info) {
+    return insert_buffer({*vk_state, create_info});
+}
+
+vulkan::gpu_buffer& vulkan::gpu_allocated_memory::query_buffer(int32_t key) {
+    auto p = buffers.find(key);
+    #ifdef ODIN5_DEBUG
+    if (!p) {
+        odin5::util::throw_except<std::runtime_error>("buffer doesnt exist");
+    }
+    #endif
+    return *p;
+}
+
+void* vulkan::gpu_allocated_memory::map(int32_t key) {
+    mapped = true;
+    auto& buffer = query_buffer(key);
+    return device_memory.mapMemory(buffer.memory_offset, buffer.buffer_info.size);
+}
+
+void vulkan::gpu_allocated_memory::unmap() {
+    if (!mapped) {
+        return;
+    }
+    device_memory.unmapMemory();
+    mapped = false;
+}
+
+void vulkan::gpu_allocated_memory::write_into_buffer(int32_t key, const void* data) {
+    auto& buffer = query_buffer(key);
+    void* bd = map(key);
+    memcpy(bd, data, buffer.buffer_info.size);
+    unmap();
+}
+
+vulkan::gpu_allocated_memory::~gpu_allocated_memory() {
+    unmap();
+}
+
+vulkan::gpu_memory_manager::gpu_memory_manager(vulkan_state& vk_state) : vk_state(&vk_state) {
+    gpu_buffer_create_info create_info{
+        .byte_size = 128,
+        .usage = vk::BufferUsageFlagBits::eTransferSrc,
+        .properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+        .element_count = 1,
+        .data = nullptr,
+    };
+    gpu_buffer buffer = {vk_state, create_info};
+    auto alloc_info = buffer.alloc_info;
+    alloc_info.allocationSize = DEFAULT_ALLOCATION_SIZE;
+    staging_memory = {vk_state, alloc_info};
+    staging_memory.wipe();
+};
+
+int32_t vulkan::gpu_memory_manager::get_matching_memory(const gpu_buffer& buffer) {
+    for (size_t i {0}; i < memory.map_size(); i++) {
+        auto* memory_p = memory.find(i);
+        if (!memory_p) continue;
+        if (memory_p->alloc_info.memoryTypeIndex == buffer.alloc_info.memoryTypeIndex and memory_p->can_fit(buffer)) {
+            return i;
+        }
+    }
+    auto alloc_info = buffer.alloc_info;
+    alloc_info.allocationSize = vulkan::DEFAULT_ALLOCATION_SIZE;
+    #ifdef ODIN5_DEBUG
+    if (alloc_info.allocationSize < buffer.alloc_info.allocationSize) {
+        odin5::util::throw_except<std::runtime_error>("what the hell are you allocating?");
+    }
+    #endif
+    int32_t key = memory.push_back({*vk_state, alloc_info});
+    return key;
+}
+
+vulkan::gpu_allocated_memory& vulkan::gpu_memory_manager::query_memory(int32_t key) {
+    auto p = memory.find(key);
+    #ifdef ODIN5_DEBUG
+    if (!p) {
+        odin5::util::throw_except<std::runtime_error>("memory doesnt exist");
+    }
+    #endif
+    return *p;
+}
+
+vulkan::gpu_buffer_accessor vulkan::gpu_memory_manager::insert_into_memory(vulkan::gpu_buffer&& buffer) {
+    int32_t memory_key = get_matching_memory(buffer);
+    int32_t buffer_key = query_memory(memory_key).insert_buffer(std::move(buffer));
+    return {memory_key, buffer_key};
+}
+
+vulkan::gpu_buffer_accessor vulkan::gpu_memory_manager::insert_into_memory_staged(gpu_buffer&& buffer) {
+    auto size = buffer.buffer_info.size;
+    gpu_buffer staging_buffer{
+        *vk_state,
+        {
+            .byte_size = buffer.buffer_info.size,
+            .usage = vk::BufferUsageFlagBits::eTransferSrc,
+            .properties = vk::MemoryPropertyFlagBits::eHostVisible |
+                          vk::MemoryPropertyFlagBits::eHostCoherent,
+            .element_count = buffer.element_count,
+            .data = buffer.data,
+        }
+    };
+    int32_t staging_key = staging_memory.insert_buffer(std::move(staging_buffer));
+    buffer.data = nullptr;
+    int32_t memory_key = get_matching_memory(buffer);
+    int32_t buffer_key = query_memory(memory_key).insert_buffer(std::move(buffer));
+    copy_buffer(*vk_state, staging_memory.query_buffer(staging_key), query_memory(memory_key).query_buffer(buffer_key), size);
+    return {memory_key, buffer_key};
+}
+
+vulkan::gpu_buffer& vulkan::gpu_memory_manager::find_in_memory(vulkan::gpu_buffer_accessor key) {
+    return query_memory(key.memory_key).query_buffer(key.buffer_key);
+}
+
+vulkan::gpu_resource_manager::gpu_resource_manager(vulkan_state& vk_state) : vk_state(&vk_state) {}
+
+mesh_idx_t vulkan::gpu_resource_manager::create_vertex_buffer(const odin5::math::spatial::vertex* data, size_t size) {
+    gpu_buffer_create_info create_info {
+        .byte_size = size * sizeof(odin5::math::spatial::vertex),
+        .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+        .properties = vk::MemoryPropertyFlagBits::eDeviceLocal,
+        .element_count = static_cast<int32_t>(size),
+        .data = data
+    };
+    gpu_buffer_accessor vertex_key = vk_state->memory_manager.insert_into_memory_staged({*vk_state, create_info});
+    return buffers.push(vertex_key);
+}
+
+vulkan::graphics_api_spec::graphics_api_spec(graphics_create_info gci, odin5::platform::window::active_window_api& window_api) {
     window_api_p = &window_api;
     create_instance(vulkan_, gci);
     create_debug_msgr(vulkan_); // runs fully only when in debug
@@ -679,38 +893,42 @@ odin5::platform::graphics::vulkan::graphics_api_spec::graphics_api_spec(odin5::p
     create_swapchain(vulkan_, window_api);
     create_image_views(vulkan_);
     create_graphics_pipeline(vulkan_);
-    create_vertex_buffer(vulkan_);
+    create_memory_managers(vulkan_);
     create_command_pool(vulkan_);
     create_command_buffers(vulkan_);
     create_synchronization_objects(vulkan_);
 
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::set_viewport(glm::vec4 vp) {
+void vulkan::graphics_api_spec::set_viewport(glm::vec4 vp) {
     dynamic_info.viewport = vp;
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::set_scissor(glm::vec4 sc) {
+void vulkan::graphics_api_spec::set_scissor(glm::vec4 sc) {
     dynamic_info.scissor = sc;
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::set_viewport_and_scissor(glm::vec4 vp) {
+void vulkan::graphics_api_spec::set_viewport_and_scissor(glm::vec4 vp) {
     dynamic_info.viewport = vp;
     dynamic_info.scissor = vp;
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::set_clear_color(glm::vec4 clear) {
+void vulkan::graphics_api_spec::set_clear_color(glm::vec4 clear) {
     dynamic_info.clear_color = clear;
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::draw() {
-    draw_frame(vulkan_, dynamic_info);
+void vulkan::graphics_api_spec::draw(draw_3d_submit_info_constref_t draw_info) {
+    draw_frame(vulkan_, dynamic_info, draw_info);
 }
 
-void odin5::platform::graphics::vulkan::graphics_api_spec::framebuffer_resized() {
+void vulkan::graphics_api_spec::framebuffer_resized() {
     recreate_swapchain(vulkan_, *window_api_p);
 }
 
-odin5::platform::graphics::vulkan::graphics_api_spec::~graphics_api_spec() {
+mesh_idx_t vulkan::graphics_api_spec::upload_mesh(const std::vector<odin5::math::spatial::vertex>& vertices) {
+    return vulkan_.resource_manager.create_vertex_buffer(vertices.data(), vertices.size());
+}
+
+vulkan::graphics_api_spec::~graphics_api_spec() {
     vulkan_.device.waitIdle();
 }
