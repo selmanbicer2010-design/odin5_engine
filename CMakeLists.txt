@@ -18,6 +18,7 @@ add_executable(odin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/graphics/vulkangraphicsapi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/window/glfwwindowapi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/math/spatial.cpp
 )
 
 target_include_directories(odin PRIVATE

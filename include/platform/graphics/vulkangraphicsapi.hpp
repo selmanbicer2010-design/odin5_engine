@@ -1,5 +1,7 @@
 #pragma once
 #include "core/math/bit.hpp"
+#include <glm/ext/matrix_double4x3_precision.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <vcruntime_new.h>
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <array>
@@ -28,6 +30,12 @@ namespace vulkan{
         {.location = 2, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(odin5::math::spatial::vertex, uv)}
         }};
 
+    struct uniform_buffer_object {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 proj;
+    };
+
     struct vulkan_state;
 
     struct gpu_buffer_create_info {
@@ -54,10 +62,12 @@ namespace vulkan{
         vk::Buffer operator*() { return *vk_buffer; };
     };
 
+    struct buffer_key_t : odin5::util::type_safe_int32_wrapper<buffer_key_t> { using odin5::util::type_safe_int32_wrapper<buffer_key_t>::type_safe_int32_wrapper; };
+    struct memory_key_t : odin5::util::type_safe_int32_wrapper<memory_key_t> { using odin5::util::type_safe_int32_wrapper<memory_key_t>::type_safe_int32_wrapper; };
+
     struct gpu_allocated_memory {
     private:
         vulkan_state* vk_state {nullptr};
-        bool mapped = false;
         vk::DeviceSize offset = 0;
     public:
         gpu_allocated_memory(std::nullptr_t) {};
@@ -74,13 +84,16 @@ namespace vulkan{
 
         bool can_fit(const gpu_buffer& buffer);
 
-        int32_t insert_buffer(gpu_buffer&& buffer);
-        int32_t emplace_buffer(const gpu_buffer_create_info& create_info);
-        gpu_buffer& query_buffer(int32_t key);
-        void* map(int32_t key);
+        [[nodiscard]]
+        buffer_key_t insert_buffer(gpu_buffer&& buffer);
+        [[nodiscard]]
+        buffer_key_t emplace_buffer(const gpu_buffer_create_info& create_info);
+        gpu_buffer& query_buffer(buffer_key_t key);
+        void* map_data = nullptr;
+        void map();
         void unmap();
 
-        void write_into_buffer(int32_t key, const void* data);
+        void write_into_buffer(buffer_key_t key, const void* data);
 
         void wipe() { unmap(); offset = 0; buffers.clear(); };
 
@@ -89,8 +102,8 @@ namespace vulkan{
     };
 
     struct gpu_buffer_accessor {
-        int32_t memory_key;
-        int32_t buffer_key;
+        memory_key_t memory_key;
+        buffer_key_t buffer_key;
     };
 
     struct gpu_memory_manager {
@@ -103,12 +116,21 @@ namespace vulkan{
         odin5::util::unordered_vector<gpu_allocated_memory> memory{};
         gpu_allocated_memory staging_memory{std::nullptr_t{}};
 
-        int32_t get_matching_memory(const gpu_buffer& buffer);
-        gpu_allocated_memory& query_memory(int32_t key);
+        [[nodiscard]]
+        memory_key_t get_matching_memory(const gpu_buffer& buffer);
+        gpu_allocated_memory& query_memory(memory_key_t key);
         gpu_buffer_accessor insert_into_memory(gpu_buffer&& buffer);
         gpu_buffer_accessor insert_into_memory_staged(gpu_buffer&& buffer);
         gpu_buffer& find_in_memory(gpu_buffer_accessor key);
 
+        gpu_allocated_memory uniform_buffer_memory{std::nullptr_t{}};
+        std::array<vulkan::buffer_key_t, FIF> uniform_buffer_keys = odin5::util::construct_array_as<vulkan::buffer_key_t, int32_t>(std::make_index_sequence<FIF>());
+
+    };
+
+    struct mesh_buffer_info {
+        gpu_buffer_accessor vertex_buffer;
+        gpu_buffer_accessor index_buffer;
     };
 
     struct gpu_resource_manager {
@@ -118,9 +140,8 @@ namespace vulkan{
         gpu_resource_manager(std::nullptr_t) {};
         gpu_resource_manager(vulkan_state& vk_state);
 
-        odin5::util::sequential_unordered_map<gpu_buffer_accessor, mesh_idx_t> buffers{};
-
-        mesh_idx_t create_vertex_buffer(const odin5::math::spatial::vertex*, size_t size);
+        odin5::util::sequential_unordered_map<mesh_buffer_info, mesh_idx_t> meshes{};
+        mesh_idx_t create_mesh_buffers(const odin5::math::spatial::vertex* vertex_p, size_t vertex_size, const uint32_t* index_p, size_t index_size);
 
     };
 
@@ -142,11 +163,15 @@ namespace vulkan{
 
         vk::raii::Queue queue{std::nullptr_t{}};
 
+        vk::raii::DescriptorSetLayout descriptor_set_layout{std::nullptr_t{}};
         vk::raii::PipelineLayout pipeline_layout{std::nullptr_t{}};
         vk::raii::Pipeline graphics_pipeline{std::nullptr_t{}};
 
-        odin5::platform::graphics::vulkan::gpu_memory_manager memory_manager{std::nullptr_t{}};
-        odin5::platform::graphics::vulkan::gpu_resource_manager resource_manager{std::nullptr_t{}};
+        vulkan::gpu_memory_manager memory_manager{std::nullptr_t{}};
+        vulkan::gpu_resource_manager resource_manager{std::nullptr_t{}};
+
+        vk::raii::DescriptorPool descriptor_pool{std::nullptr_t{}};
+        std::array<vk::raii::DescriptorSet, FIF> descriptor_sets = odin5::util::construct_array_as<vk::raii::DescriptorSet, std::nullptr_t>(std::make_index_sequence<FIF>());
 
         vk::raii::CommandPool command_pool{std::nullptr_t{}};
         std::array<vk::raii::CommandBuffer, FIF> command_buffers {odin5::util::construct_array_as<vk::raii::CommandBuffer, std::nullptr_t>(std::make_index_sequence<FIF>{})};
@@ -181,10 +206,12 @@ namespace vulkan{
         void set_viewport(glm::vec4 vp);
         void set_scissor(glm::vec4 sc);
         void set_viewport_and_scissor(glm::vec4 vp);
+        void set_view_3d(glm::mat4 view);
+        void set_proj_3d(glm::mat4 proj);
         void set_clear_color(glm::vec4 clear);
         void draw(draw_3d_submit_info_constref_t draw_info);
         void framebuffer_resized();
-        mesh_idx_t upload_mesh(const std::vector<odin5::math::spatial::vertex>& vertices);
+        mesh_idx_t upload_mesh(const std::vector<odin5::math::spatial::vertex>& vertices, const std::vector<uint32_t>& indices);
         ~graphics_api_spec();
 
         odin5::platform::graphics::graphics_dynamic_info dynamic_info;

@@ -21,6 +21,9 @@ namespace graphics{
         glm::vec4 scissor {0.f, 0.f, 0.f, 0.f};
         glm::vec4 clear_color {};
 
+        glm::mat4 view_3d {1.f};
+        glm::mat4 proj_3d {1.f};
+
     };
 
     struct mesh_idx_t : odin5::util::type_safe_int32_wrapper<mesh_idx_t> { using odin5::util::type_safe_int32_wrapper<mesh_idx_t>::type_safe_int32_wrapper; };
@@ -41,10 +44,12 @@ namespace graphics{
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport), void, glm::vec4>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_scissor), void, glm::vec4>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport_and_scissor), void, glm::vec4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_view_3d), void, glm::mat4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_proj_3d), void, glm::mat4>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_clear_color), void, glm::vec4>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::draw), void, draw_3d_submit_info_constref_t>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::framebuffer_resized), void>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::upload_mesh), mesh_idx_t, const std::vector<odin5::math::spatial::vertex>&>::v;
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::upload_mesh), mesh_idx_t, const std::vector<odin5::math::spatial::vertex>&, const std::vector<uint32_t>&>::v;
     };
 
     template <class graphics_interface_spec>

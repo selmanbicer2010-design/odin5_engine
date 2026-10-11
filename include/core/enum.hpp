@@ -4,23 +4,6 @@
 namespace odin5{
 namespace enm{
 
-    struct window_api_identifier_t : odin5::util::type_safe_int32_wrapper<window_api_identifier_t> { using odin5::util::type_safe_int32_wrapper<window_api_identifier_t>::type_safe_int32_wrapper; };
-    struct graphics_api_identifier_t : odin5::util::type_safe_int32_wrapper<graphics_api_identifier_t> { using odin5::util::type_safe_int32_wrapper<graphics_api_identifier_t>::type_safe_int32_wrapper; };
-
-    namespace window_api_identifiers {
-        constexpr window_api_identifier_t unknown{0};
-        constexpr window_api_identifier_t glfw{1};
-        constexpr window_api_identifier_t sdl3{2};
-    }
-    namespace graphics_api_identifiers {
-        constexpr graphics_api_identifier_t unknown{0};
-        constexpr graphics_api_identifier_t vulkan{1};
-        constexpr graphics_api_identifier_t opengl{2};
-    }
-
-    constexpr window_api_identifier_t active_window_api = window_api_identifiers::glfw;
-    constexpr graphics_api_identifier_t active_graphics_api = graphics_api_identifiers::vulkan;
-
     struct operating_system_identifier_t : odin5::util::type_safe_int32_wrapper<operating_system_identifier_t> { using odin5::util::type_safe_int32_wrapper<operating_system_identifier_t>::type_safe_int32_wrapper; };
 
     namespace operating_system_identifiers {
@@ -42,6 +25,19 @@ namespace enm{
     #else
     constexpr operating_system_identifier_t active_operating_system = operating_system_identifiers::unknown;
     #endif //defined(_WIN64)
+
+    struct build_mode_t : odin5::util::type_safe_int32_wrapper<build_mode_t> { using odin5::util::type_safe_int32_wrapper<build_mode_t>::type_safe_int32_wrapper; };
+
+    namespace build_mode_identifiers {
+        constexpr build_mode_t debug{0};
+        constexpr build_mode_t release{1};
+    }
+
+    #if defined(ODIN5_DEBUG)
+    constexpr build_mode_t active_build_mode = build_mode_identifiers::debug;
+    #elif defined(ODIN5_RELEASE)
+    conconstexpr build_mode_t active_build_mode = build_mode_ibuild_mode_identifiers::release;
+    #endif
 
     struct error_t : odin5::util::type_safe_int32_wrapper<error_t> { using odin5::util::type_safe_int32_wrapper<error_t>::type_safe_int32_wrapper; };
     using error_ptr_t = odin5::enm::error_t*;

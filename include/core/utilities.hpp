@@ -2,13 +2,11 @@
 #include <array>
 #include <chrono>
 #include <cinttypes> // IWYU pragma: keep
-#include <complex>
 #include <concepts>
 #include <print>
 #include <source_location>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
@@ -155,6 +153,13 @@ namespace util{
             value = other.value;
             return *this;
         }
+        constexpr type_safe_int32_wrapper operator|(const type_safe_int32_wrapper<inheritor_t, default_value_v>& other) {
+            return value | other.value;
+        }
+        constexpr type_safe_int32_wrapper& operator|=(const type_safe_int32_wrapper<inheritor_t, default_value_v>& other) {
+            value |= other.value;
+            return *this;
+        }
         constexpr bool operator==(inheritor_t other) const {
             return value == other.value;
         }
@@ -162,7 +167,7 @@ namespace util{
             return value != other.value;
         }
         explicit operator bool() const {
-            return value != default_value;
+            return value;
         }
         explicit operator int32_t() const {
             return value;
@@ -194,6 +199,7 @@ namespace util{
     template <size_t... indices, typename... args_t>
     struct index_tuple_impl<std::index_sequence<indices...>, args_t...> : public index_tuple_leaf<indices, args_t>... {
         template <int32_t index>
+        requires (index >= 0) and (index <= sizeof...(indices))
         auto& get() {
             return get_leaf<index>(*this);
         }

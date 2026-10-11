@@ -3,6 +3,9 @@
 
 namespace odin5{
 namespace math{
+    constexpr uint64_t align_up_to(uint64_t base, uint64_t up_to) {
+        return (base + up_to - 1) / up_to * up_to;
+    }
     template <typename num_t>
     constexpr num_t pow(num_t base, int64_t exponent) {
         if (exponent == 0) {
@@ -24,15 +27,17 @@ namespace math{
         }
         return applied;
     }
-    constexpr float detail__trig_taylor_series_component(float x, int64_t degree) {
-        return odin5::math::pow(x, degree) / static_cast<float>(odin5::math::factorial(degree));
+    namespace detail{
+        constexpr float trig_taylor_series_component(float x, int64_t degree) {
+            return odin5::math::pow(x, degree) / static_cast<float>(odin5::math::factorial(degree));
+        }
     }
     constexpr float sin(float x, int64_t precision = 5) {
         bool sign_flag = false;
         float result = x;
         for (int64_t i = 3; i < precision * 2 + 3; i += 2) {
             int64_t sign = sign_flag * 2 - 1;
-            result += detail__trig_taylor_series_component(x, i) * sign;
+            result += detail::trig_taylor_series_component(x, i) * sign;
             sign_flag = !sign_flag;
         }
         return result;
@@ -42,7 +47,7 @@ namespace math{
         float result = 1;
         for (int64_t i = 2; i < precision * 2 + 2; i += 2) {
             int64_t sign = sign_flag * 2 - 1;
-            result += detail__trig_taylor_series_component(x, i) * sign;
+            result += detail::trig_taylor_series_component(x, i) * sign;
             sign_flag = !sign_flag;
         }
         return result;
