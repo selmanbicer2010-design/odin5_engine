@@ -397,7 +397,7 @@ odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform:
     glfwSetWindowRefreshCallback(glfw_.window.ptr, [](GLFWwindow* wp){ api_from_window(wp).window_refresh.fire(); });
     glfwSetWindowFocusCallback(glfw_.window.ptr, [](GLFWwindow* wp, int focus){ api_from_window(wp).window_focus.fire(focus == GLFW_FOCUSED ? window::enm::focused : window::enm::unfocused); });
     glfwSetWindowIconifyCallback(glfw_.window.ptr, [](GLFWwindow* wp, int iconify){ api_from_window(wp).window_iconify.fire(iconify == GLFW_ICONIFIED ? window::enm::iconified : window::enm::uniconified); });
-    glfwSetWindowMaximizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int maximize){ api_from_window(wp).window_iconify.fire(maximize == GLFW_MAXIMIZED ? window::enm::maximized : window::enm::unmaximized); });
+    glfwSetWindowMaximizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int maximize){ api_from_window(wp).window_maximize.fire(maximize == GLFW_MAXIMIZED ? window::enm::maximized : window::enm::unmaximized); });
     glfwSetFramebufferSizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int x, int y){ api_from_window(wp).framebuffer_resize.fire(glm::ivec2{x, y}); });
     glfwSetWindowContentScaleCallback(glfw_.window.ptr, [](GLFWwindow* wp, float x, float y){ api_from_window(wp).window_content_scale.fire(glm::vec2{x, y}); });
 
@@ -543,7 +543,13 @@ odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::win
 }
 
 odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::window_api_spec::mouse_state(window::enm::input::mouse_button_t button) {
-    return glfw_to_action(glfwGetKey(glfw_.window.ptr, mouse_button_to_glfw(button)));
+    return glfw_to_action(glfwGetMouseButton(glfw_.window.ptr, mouse_button_to_glfw(button)));
+}
+
+glm::vec2 odin5::platform::window::glfw::window_api_spec::get_mouse_position() {
+    double x, y;
+    glfwGetCursorPos(glfw_.window.ptr, &x, &y);
+    return {x, y};
 }
 
 odin5::platform::window::glfw::window_api_spec::~window_api_spec() {

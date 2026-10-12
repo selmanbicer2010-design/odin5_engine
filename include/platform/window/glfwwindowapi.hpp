@@ -28,8 +28,8 @@ namespace glfw {
 
     struct fullscreen_info {
         window::enm::fullscreen_mode_t mode = window::enm::fullscreen_modes::free;
-        glm::ivec2 position = {0u, 0u};
-        glm::ivec2 size = {1u, 1u};
+        glm::ivec2 position = {0, 0};
+        glm::ivec2 size = {1, 1};
     };
 
     struct glfw_state {
@@ -66,8 +66,9 @@ namespace glfw {
         void set_decorated(bool state);
         void set_decoration_preference(bool state);
 
-        window::enm::input::action_t key_state(window::enm::input::key_t key);
-        window::enm::input::action_t mouse_state(window::enm::input::mouse_button_t button);
+        [[nodiscard]] window::enm::input::action_t key_state(window::enm::input::key_t key);
+        [[nodiscard]] window::enm::input::action_t mouse_state(window::enm::input::mouse_button_t button);
+        [[nodiscard]] glm::vec2 get_mouse_position();
 
         odin5::event::basic_event<glm::ivec2> window_move;
         odin5::event::basic_event<glm::ivec2> window_resize;

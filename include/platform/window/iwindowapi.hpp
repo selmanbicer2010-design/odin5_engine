@@ -45,6 +45,7 @@ namespace window{
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_decoration_preference), void, bool>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::key_state), window::enm::input::action_t, window::enm::input::key_t>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::mouse_state), window::enm::input::action_t, window::enm::input::mouse_button_t>::v and
+            constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_mouse_position), glm::vec2>::v and
             constexpr_window_interface_spec::template has_member<odin5::event::basic_event<glm::ivec2>, &window_interface_spec::window_move>::v and
             constexpr_window_interface_spec::template has_member<odin5::event::basic_event<glm::ivec2>, &window_interface_spec::window_resize>::v and
             constexpr_window_interface_spec::template has_member<odin5::event::basic_event<>, &window_interface_spec::window_close>::v and
