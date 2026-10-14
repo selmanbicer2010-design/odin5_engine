@@ -413,7 +413,7 @@ odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform:
     glfw_.decoration_preference = wci.decorated;
     set_decorated(wci.decorated);
     set_window_position(wci.window_pos);
-    set_fullscreen(wci.fullscreen);
+    set_fullscreen_mode(wci.fullscreen);
 }
 
 bool odin5::platform::window::glfw::window_api_spec::should_close() {
@@ -478,7 +478,7 @@ uint32_t odin5::platform::window::glfw::window_api_spec::get_monitor_refresh_rat
     return glfw_.monitor.vidmode->refreshRate;
 }
 
-odin5::platform::window::enm::fullscreen_mode_t odin5::platform::window::glfw::window_api_spec::get_fullscreen() {
+odin5::platform::window::enm::fullscreen_mode_t odin5::platform::window::glfw::window_api_spec::get_fullscreen_mode() {
     return glfw_.fsi.mode;
 }
 
@@ -490,7 +490,7 @@ void odin5::platform::window::glfw::window_api_spec::set_window_position(glm::iv
     glfwSetWindowPos(glfw_.window.ptr, position.x, position.y);
 }
 
-void odin5::platform::window::glfw::window_api_spec::set_fullscreen(window::enm::fullscreen_mode_t state) {
+void odin5::platform::window::glfw::window_api_spec::set_fullscreen_mode(window::enm::fullscreen_mode_t state) {
     if (glfw_.fsi.mode == state) return;
 
     if (glfw_.fsi.mode == window::enm::fullscreen_modes::free) {

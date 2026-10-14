@@ -43,9 +43,11 @@ int main() {
 
     window_api.key.connect([&](auto key, auto action, auto){ if (key == win_enm::input::keys::escape and action == win_enm::input::action::press) window_api.terminate(); });
 
-    window_api.key.connect([&](auto key, auto action, auto){ if (key == win_enm::input::keys::f11 and action == win_enm::input::action::press) {
-        window_api.get_fullscreen() == win_enm::fullscreen_modes::free ? window_api.set_fullscreen(win_enm::fullscreen_modes::exclusive) : window_api.set_fullscreen(win_enm::fullscreen_modes::free);
-    } });
+    window_api.key.connect([&](auto key, auto action, auto){
+        if (key == win_enm::input::keys::f11 and action == win_enm::input::action::press) {
+            window_api.get_fullscreen_mode() == win_enm::fullscreen_modes::free ? window_api.set_fullscreen_mode(win_enm::fullscreen_modes::exclusive) : window_api.set_fullscreen_mode(win_enm::fullscreen_modes::free);
+        }
+    });
 
     odin5::math::spatial::camera_3d camera{};
     camera.transform.position = {0.f, 0.f, 2.f};

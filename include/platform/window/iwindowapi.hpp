@@ -37,10 +37,10 @@ namespace window{
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_monitor_size), glm::ivec2>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_monitor_position), glm::ivec2>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_monitor_refresh_rate), uint32_t>::v and
-            constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_fullscreen), window::enm::fullscreen_mode_t>::v and
+            constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::get_fullscreen_mode), window::enm::fullscreen_mode_t>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_window_size), void, glm::ivec2>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_window_position), void, glm::ivec2>::v and
-            constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_fullscreen), void, window::enm::fullscreen_mode_t>::v and
+            constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_fullscreen_mode), void, window::enm::fullscreen_mode_t>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_decorated), void, bool>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::set_decoration_preference), void, bool>::v and
             constexpr_window_interface_spec::template has_method<decltype(&window_interface_spec::key_state), window::enm::input::action_t, window::enm::input::key_t>::v and

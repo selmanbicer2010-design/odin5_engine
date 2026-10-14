@@ -59,10 +59,10 @@ namespace glfw {
         [[nodiscard]] glm::ivec2 get_monitor_size();
         [[nodiscard]] glm::ivec2 get_monitor_position();
         [[nodiscard]] uint32_t get_monitor_refresh_rate();
-        [[nodiscard]] window::enm::fullscreen_mode_t get_fullscreen();
+        [[nodiscard]] window::enm::fullscreen_mode_t get_fullscreen_mode();
         void set_window_size(glm::ivec2 size);
         void set_window_position(glm::ivec2 position);
-        void set_fullscreen(window::enm::fullscreen_mode_t state);
+        void set_fullscreen_mode(window::enm::fullscreen_mode_t state);
         void set_decorated(bool state);
         void set_decoration_preference(bool state);
 
