@@ -6,6 +6,10 @@ namespace platform{
 namespace window{
 namespace enm{
 
+    constexpr int32_t max_window_count = 8;
+
+    constexpr int32_t max_monitor_count = 8;
+
     struct window_api_identifier_t : odin5::util::type_safe_int32_wrapper<window_api_identifier_t> { using odin5::util::type_safe_int32_wrapper<window_api_identifier_t>::type_safe_int32_wrapper; };
 
     namespace window_api_identifiers {

@@ -10,6 +10,8 @@ namespace odin5{
 namespace platform{
 namespace graphics{
 
+    struct surface_key_t : odin5::util::type_safe_int32_wrapper<surface_key_t> { using odin5::util::type_safe_int32_wrapper<surface_key_t>::type_safe_int32_wrapper; };
+
     struct graphics_create_info {
         std::string application_name = "NONE_SET";
         std::string engine_name = "ODIN5";
@@ -40,15 +42,16 @@ namespace graphics{
         using constexpr_graphics_interface_spec = odin5::util::constexpr_class<graphics_interface_spec>;
         static constexpr bool v =
             constexpr_graphics_interface_spec::template constructible_from<graphics_create_info, odin5::platform::window::active_window_api&>::v and
-            constexpr_graphics_interface_spec::template has_member<graphics_dynamic_info, &graphics_interface_spec::dynamic_info>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport), void, glm::vec4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_scissor), void, glm::vec4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport_and_scissor), void, glm::vec4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_view_3d), void, glm::mat4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_proj_3d), void, glm::mat4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_clear_color), void, glm::vec4>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::draw), void, draw_3d_submit_info_constref_t>::v and
-            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::framebuffer_resized), void>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::create_surface), surface_key_t, window::window_key_t>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::destroy_surface), void, surface_key_t>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport), void, surface_key_t, glm::vec4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_scissor), void, surface_key_t, glm::vec4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_viewport_and_scissor), void, surface_key_t, glm::vec4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_view_3d), void, surface_key_t, glm::mat4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_proj_3d), void, surface_key_t, glm::mat4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::set_clear_color), void, surface_key_t, glm::vec4>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::draw), void, surface_key_t, draw_3d_submit_info_constref_t>::v and
+            constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::framebuffer_resized), void, surface_key_t>::v and
             constexpr_graphics_interface_spec::template has_method<decltype(&graphics_interface_spec::upload_mesh), mesh_idx_t, const std::vector<odin5::math::spatial::vertex>&, const std::vector<uint32_t>&>::v;
     };
 

@@ -5,13 +5,34 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
 #include <glm/ext/vector_uint2_sized.hpp>
+#include <print>
 #include <stdexcept>
 #include "platform/graphics/graphicsapienum.hpp"
 #include "platform/window/windowapienum.hpp"
 
 namespace{
-    odin5::platform::window::glfw::window_api_spec& api_from_window(GLFWwindow* window_p) {
-        return *static_cast<odin5::platform::window::glfw::window_api_spec*>(glfwGetWindowUserPointer(window_p));
+
+    void enumerate_monitors(odin5::platform::window::glfw::glfw_state& glfw_state) {
+        int32_t count;
+        GLFWmonitor** monitors = glfwGetMonitors(&count);
+        GLFWmonitor* primary = glfwGetPrimaryMonitor();
+
+        if (count > odin5::platform::window::enm::max_monitor_count) {
+            odin5::util::throw_except<std::out_of_range>("Dude! why so many monitors!");
+        }
+
+        glfw_state.monitors.monitor_count = count;
+
+        for (int32_t i = 0; i < glfw_state.monitors.monitor_count; i++) {
+            glfw_state.monitors.array[i] = monitors[i];
+            if (monitors[i] == primary) {
+                glfw_state.monitors.main_monitor = i;
+            }
+        }
+    };
+
+    odin5::platform::window::glfw::self_referential_window_info& get_srwi_from_ptr(GLFWwindow* window_p) {
+        return *static_cast<odin5::platform::window::glfw::self_referential_window_info*>(glfwGetWindowUserPointer(window_p));
     }
 
     void make_window_fullscreen_exclusive(GLFWwindow* window_p, GLFWmonitor* monitor_p, const GLFWvidmode* vidmode_p) {
@@ -360,64 +381,61 @@ namespace{
     }
 }
 
-odin5::platform::window::glfw::window_api_spec::window_api_spec(odin5::platform::window::window_create_info wci) {
+odin5::platform::window::glfw::window_api_spec::window_api_spec() {
     if (!glfwInit()) {
         odin5::util::throw_except<std::runtime_error>("failed to init glfw");
     }
 
+    enumerate_monitors(glfw_);
+}
+
+odin5::platform::window::window_key_t odin5::platform::window::glfw::window_api_spec::create_window(odin5::platform::window::window_create_info wci) {
     if constexpr (odin5::platform::graphics::enm::active_graphics_api != odin5::platform::graphics::enm::graphics_api_identifiers::opengl) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     }
 
     glfwWindowHint(GLFW_DECORATED, wci.decorated);
 
-    glfw_.monitor = glfwGetPrimaryMonitor();
+    window_key_t key = glfw_.windows.push(odin5::platform::window::glfw::window_t{wci.window_size, wci.window_name.c_str()});
 
-    glfw_.window = glfwCreateWindow(
-        wci.window_size.x,
-        wci.window_size.y,
-        wci.window_name.c_str(),
-        nullptr,
-        nullptr
-    );
-
-    if (!glfw_.window.ptr) {
-        terminate();
-        odin5::util::throw_except<std::runtime_error>("failed to init window");
-    }
+    window_t& wn = *glfw_.windows.find(key);
+    wn.srwi.key = key;
+    wn.srwi.owner = this;
 
     if constexpr (odin5::platform::graphics::enm::active_graphics_api == odin5::platform::graphics::enm::graphics_api_identifiers::opengl) {
-        glfwMakeContextCurrent(glfw_.window.ptr);
+        glfwMakeContextCurrent(wn.ptr);
     }
 
-    glfwSetWindowUserPointer(glfw_.window.ptr, this);
-    glfwSetWindowPosCallback(glfw_.window.ptr, [](GLFWwindow* wp, int x, int y){ api_from_window(wp).window_move.fire({x, y}); });
-    glfwSetWindowSizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int x, int y){ api_from_window(wp).window_resize.fire({x, y}); });
-    glfwSetWindowCloseCallback(glfw_.window.ptr, [](GLFWwindow* wp){ api_from_window(wp).window_close.fire(); });
-    glfwSetWindowRefreshCallback(glfw_.window.ptr, [](GLFWwindow* wp){ api_from_window(wp).window_refresh.fire(); });
-    glfwSetWindowFocusCallback(glfw_.window.ptr, [](GLFWwindow* wp, int focus){ api_from_window(wp).window_focus.fire(focus == GLFW_FOCUSED ? window::enm::focused : window::enm::unfocused); });
-    glfwSetWindowIconifyCallback(glfw_.window.ptr, [](GLFWwindow* wp, int iconify){ api_from_window(wp).window_iconify.fire(iconify == GLFW_ICONIFIED ? window::enm::iconified : window::enm::uniconified); });
-    glfwSetWindowMaximizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int maximize){ api_from_window(wp).window_maximize.fire(maximize == GLFW_MAXIMIZED ? window::enm::maximized : window::enm::unmaximized); });
-    glfwSetFramebufferSizeCallback(glfw_.window.ptr, [](GLFWwindow* wp, int x, int y){ api_from_window(wp).framebuffer_resize.fire(glm::ivec2{x, y}); });
-    glfwSetWindowContentScaleCallback(glfw_.window.ptr, [](GLFWwindow* wp, float x, float y){ api_from_window(wp).window_content_scale.fire(glm::vec2{x, y}); });
+    glfwSetWindowUserPointer(wn.ptr, &wn.srwi);
+    glfwSetWindowPosCallback(wn.ptr, [](GLFWwindow* wp, int x, int y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_move.fire(srwi.key, {x, y}); });
+    glfwSetWindowSizeCallback(wn.ptr, [](GLFWwindow* wp, int x, int y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_resize.fire(srwi.key, {x, y}); });
+    glfwSetWindowCloseCallback(wn.ptr, [](GLFWwindow* wp){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_close.fire(srwi.key); });
+    glfwSetWindowRefreshCallback(wn.ptr, [](GLFWwindow* wp){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_refresh.fire(srwi.key); });
+    glfwSetWindowFocusCallback(wn.ptr, [](GLFWwindow* wp, int focus){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_focus.fire(srwi.key, focus == GLFW_FOCUSED ? window::enm::focused : window::enm::unfocused); });
+    glfwSetWindowIconifyCallback(wn.ptr, [](GLFWwindow* wp, int iconify){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_iconify.fire(srwi.key, iconify == GLFW_ICONIFIED ? window::enm::iconified : window::enm::uniconified); });
+    glfwSetWindowMaximizeCallback(wn.ptr, [](GLFWwindow* wp, int maximize){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_maximize.fire(srwi.key, maximize == GLFW_MAXIMIZED ? window::enm::maximized : window::enm::unmaximized); });
+    glfwSetFramebufferSizeCallback(wn.ptr, [](GLFWwindow* wp, int x, int y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->framebuffer_resize.fire(srwi.key, glm::ivec2{x, y}); });
+    glfwSetWindowContentScaleCallback(wn.ptr, [](GLFWwindow* wp, float x, float y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->window_content_scale.fire(srwi.key, glm::vec2{x, y}); });
 
-    glfwSetKeyCallback(glfw_.window.ptr, [](GLFWwindow* wp, int key, int, int action, int mods){ api_from_window(wp).key.fire(glfw_to_key(key), glfw_to_action(action), glfw_to_mods(mods)); });
-    glfwSetCharCallback(glfw_.window.ptr, [](GLFWwindow* wp, uint32_t c){ api_from_window(wp).character.fire(c); });
-    glfwSetMouseButtonCallback(glfw_.window.ptr, [](GLFWwindow* wp, int button, int action, int mods){ api_from_window(wp).mouse_button.fire(glfw_to_mouse_button(button), glfw_to_action(action), glfw_to_mods(mods)); });
-    glfwSetCursorPosCallback(glfw_.window.ptr, [](GLFWwindow* wp, double x, double y){ api_from_window(wp).cursor_move.fire({x, y}); });
-    glfwSetCursorEnterCallback(glfw_.window.ptr, [](GLFWwindow* wp, int entered){ api_from_window(wp).cursor_enter.fire(entered == GLFW_TRUE ? window::enm::enter : window::enm::exit); });
-    glfwSetScrollCallback(glfw_.window.ptr, [](GLFWwindow* wp, double x, double y){ api_from_window(wp).cursor_scroll.fire({x, y}); });
+    glfwSetKeyCallback(wn.ptr, [](GLFWwindow* wp, int key, int, int action, int mods){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->key.fire(srwi.key, glfw_to_key(key), glfw_to_action(action), glfw_to_mods(mods)); });
+    glfwSetCharCallback(wn.ptr, [](GLFWwindow* wp, uint32_t c){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->character.fire(srwi.key, c); });
+    glfwSetMouseButtonCallback(wn.ptr, [](GLFWwindow* wp, int button, int action, int mods){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->mouse_button.fire(srwi.key, glfw_to_mouse_button(button), glfw_to_action(action), glfw_to_mods(mods)); });
+    glfwSetCursorPosCallback(wn.ptr, [](GLFWwindow* wp, double x, double y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->cursor_move.fire(srwi.key, {x, y}); });
+    glfwSetCursorEnterCallback(wn.ptr, [](GLFWwindow* wp, int entered){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->cursor_enter.fire(srwi.key, entered == GLFW_TRUE ? window::enm::enter : window::enm::exit); });
+    glfwSetScrollCallback(wn.ptr, [](GLFWwindow* wp, double x, double y){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->cursor_scroll.fire(srwi.key, {x, y}); });
 
-    glfwSetDropCallback(glfw_.window.ptr, [](GLFWwindow* wp, int count, const char** paths){ api_from_window(wp).file_drop.fire(count, paths); });
+    glfwSetDropCallback(wn.ptr, [](GLFWwindow* wp, int count, const char** paths){ auto& srwi = get_srwi_from_ptr(wp); srwi.owner->file_drop.fire(count, paths); });
 
-    glfw_.decoration_preference = wci.decorated;
-    set_decorated(wci.decorated);
-    set_window_position(wci.window_pos);
-    set_fullscreen_mode(wci.fullscreen);
+    set_decoration_preference(key, wci.decorated);
+    set_decorated(key, wci.decorated);
+    set_window_position(key, wci.window_pos);
+    set_fullscreen_mode(key, wci.fullscreen);
+
+    return key;
 }
 
-bool odin5::platform::window::glfw::window_api_spec::should_close() {
-    return glfwWindowShouldClose(glfw_.window.ptr) or terminated_;
+void odin5::platform::window::glfw::window_api_spec::destroy_window(window_key_t wn) {
+    glfw_.windows.erase(wn);
 }
 
 odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::update() {
@@ -425,130 +443,147 @@ odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::update() {
     return odin5::enm::err::NONE;
 }
 
+bool odin5::platform::window::glfw::window_api_spec::should_close(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
+    return glfwWindowShouldClose(window.ptr) or terminated_;
+}
+
 odin5::enm::error_t odin5::platform::window::glfw::window_api_spec::terminate() {
-    if (terminated_)
-        return odin5::enm::err::WINDOW_API_ALREADY_TERMINATED;
-
     terminated_ = true;
-    if (glfw_.window.ptr) {
-        glfwDestroyWindow(glfw_.window.ptr);
-    }
     glfwTerminate();
-
     return odin5::enm::err::NONE;
 }
 
-glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_framebuffer_size() {
+glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_framebuffer_size(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
     int32_t x, y;
-    glfwGetFramebufferSize(glfw_.window.ptr, &x, &y);
+    glfwGetFramebufferSize(window.ptr, &x, &y);
     return glm::ivec2{x, y};
 }
 
-float odin5::platform::window::glfw::window_api_spec::get_framebuffer_aspect_ratio() {
-    glm::ivec2 framebuffer_size = get_framebuffer_size();
+float odin5::platform::window::glfw::window_api_spec::get_framebuffer_aspect_ratio(window_key_t wn) {
+    glm::ivec2 framebuffer_size = get_framebuffer_size(wn);
     if (framebuffer_size.y == 0u) {
         return 1.f;
     }
     return static_cast<float>(framebuffer_size.x) / static_cast<float>(framebuffer_size.y);
 }
 
-glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_window_size() {
+glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_window_size(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
     int32_t x, y;
-    glfwGetWindowSize(glfw_.window.ptr, &x, &y);
+    glfwGetWindowSize(window.ptr, &x, &y);
     return {x, y};
 }
 
-glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_window_position() {
+glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_window_position(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
     int32_t x, y;
-    glfwGetWindowPos(glfw_.window.ptr, &x, &y);
+    glfwGetWindowPos(window.ptr, &x, &y);
     return {x, y};
 }
 
-glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_monitor_size() {
-    return {glfw_.monitor.vidmode->width, glfw_.monitor.vidmode->height};
+odin5::platform::window::enm::fullscreen_mode_t odin5::platform::window::glfw::window_api_spec::get_fullscreen_mode(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
+    return window.fsi.mode;
 }
 
-glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_monitor_position() {
-    int32_t x, y;
-    glfwGetMonitorPos(glfw_.monitor.ptr, &x, &y);
-    return {x, y};
+void odin5::platform::window::glfw::window_api_spec::set_window_size(window_key_t wn, glm::ivec2 size) {
+    auto& window = glfw_.windows[wn];
+    glfwSetWindowSize(window.ptr, size.x, size.y);
 }
 
-uint32_t odin5::platform::window::glfw::window_api_spec::get_monitor_refresh_rate() {
-    return glfw_.monitor.vidmode->refreshRate;
+void odin5::platform::window::glfw::window_api_spec::set_window_position(window_key_t wn, glm::ivec2 position) {
+    auto& window = glfw_.windows[wn];
+    glfwSetWindowPos(window.ptr, position.x, position.y);
 }
 
-odin5::platform::window::enm::fullscreen_mode_t odin5::platform::window::glfw::window_api_spec::get_fullscreen_mode() {
-    return glfw_.fsi.mode;
-}
+void odin5::platform::window::glfw::window_api_spec::set_fullscreen_mode(window_key_t wn, window::enm::fullscreen_mode_t state) {
+    auto& window = glfw_.windows[wn];
+    if (window.fsi.mode == state) return;
 
-void odin5::platform::window::glfw::window_api_spec::set_window_size(glm::ivec2 size) {
-    glfwSetWindowSize(glfw_.window.ptr, size.x, size.y);
-}
-
-void odin5::platform::window::glfw::window_api_spec::set_window_position(glm::ivec2 position) {
-    glfwSetWindowPos(glfw_.window.ptr, position.x, position.y);
-}
-
-void odin5::platform::window::glfw::window_api_spec::set_fullscreen_mode(window::enm::fullscreen_mode_t state) {
-    if (glfw_.fsi.mode == state) return;
-
-    if (glfw_.fsi.mode == window::enm::fullscreen_modes::free) {
-        glfw_.fsi.position = get_window_position();
-        glfw_.fsi.size = get_window_size();
+    if (window.fsi.mode == window::enm::fullscreen_modes::free) {
+        window.fsi.position = get_window_position(wn);
+        window.fsi.size = get_window_size(wn);
         if (state == window::enm::fullscreen_modes::exclusive) {
-            make_window_fullscreen_exclusive(glfw_.window.ptr, glfw_.monitor.ptr, glfw_.monitor.vidmode);
+            make_window_fullscreen_exclusive(window.ptr, glfw_.monitors.array[get_main_monitor().value].ptr, glfw_.monitors.array[get_main_monitor().value].vidmode);
         }
         else if (state == window::enm::fullscreen_modes::borderless) {
-            set_decorated(false);
-            set_window_position(get_monitor_position());
-            set_window_size(get_monitor_size());
+            set_decorated(wn, false);
+            set_window_position(wn, get_monitor_position(get_main_monitor()));
+            set_window_size(wn, get_monitor_size(get_main_monitor()));
         }
     }
-    else if (glfw_.fsi.mode == window::enm::fullscreen_modes::exclusive) {
+    else if (window.fsi.mode == window::enm::fullscreen_modes::exclusive) {
         if (state == window::enm::fullscreen_modes::free) {
-            remove_window_fullscreen_exclusive(glfw_.window.ptr, glfw_.fsi.position, glfw_.fsi.size);
+            remove_window_fullscreen_exclusive(window.ptr, window.fsi.position, window.fsi.size);
         }
         if (state == window::enm::fullscreen_modes::borderless) {
-            remove_window_fullscreen_exclusive(glfw_.window.ptr, glfw_.fsi.position, glfw_.fsi.size);
-            set_decorated(false);
-            set_window_position(get_monitor_position());
-            set_window_size(get_monitor_size());
+            remove_window_fullscreen_exclusive(window.ptr, window.fsi.position, window.fsi.size);
+            set_decorated(wn, false);
+            set_window_position(wn, get_monitor_position(get_main_monitor()));
+            set_window_size(wn, get_monitor_size(get_main_monitor()));
         }
     }
-    else if (glfw_.fsi.mode == window::enm::fullscreen_modes::borderless) {
+    else if (window.fsi.mode == window::enm::fullscreen_modes::borderless) {
         if (state == window::enm::fullscreen_modes::free) {
-            set_decorated(glfw_.decoration_preference);
-            set_window_position(glfw_.fsi.position);
-            set_window_size(glfw_.fsi.size);
+            set_decorated(wn, window.fsi.decoration_preference);
+            set_window_position(wn, window.fsi.position);
+            set_window_size(wn, window.fsi.size);
         }
         if (state == window::enm::fullscreen_modes::exclusive) {
-            set_decorated(glfw_.decoration_preference);
-            make_window_fullscreen_exclusive(glfw_.window.ptr, glfw_.monitor.ptr, glfw_.monitor.vidmode);
+            set_decorated(wn, window.fsi.decoration_preference);
+            make_window_fullscreen_exclusive(window.ptr, glfw_.monitors.array[get_main_monitor().value].ptr, glfw_.monitors.array[get_main_monitor().value].vidmode);
         }
     }
-    glfw_.fsi.mode = state;
+    window.fsi.mode = state;
 }
 
-void odin5::platform::window::glfw::window_api_spec::set_decorated(bool state) {
-    glfwSetWindowAttrib(glfw_.window.ptr, GLFW_DECORATED, state);
+void odin5::platform::window::glfw::window_api_spec::set_decorated(window_key_t wn, bool state) {
+    auto& window = glfw_.windows[wn];
+    glfwSetWindowAttrib(window.ptr, GLFW_DECORATED, state);
 }
 
-void odin5::platform::window::glfw::window_api_spec::set_decoration_preference(bool state) {
-    glfw_.decoration_preference = state;
+void odin5::platform::window::glfw::window_api_spec::set_decoration_preference(window_key_t wn, bool state) {
+    auto& window = glfw_.windows[wn];
+    window.fsi.decoration_preference = state;
 }
 
-odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::window_api_spec::key_state(window::enm::input::key_t key) {
-    return glfw_to_action(glfwGetKey(glfw_.window.ptr, key_to_glfw(key)));
+odin5::platform::window::monitor_key_t odin5::platform::window::glfw::window_api_spec::get_main_monitor() {
+    return glfw_.monitors.main_monitor;
 }
 
-odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::window_api_spec::mouse_state(window::enm::input::mouse_button_t button) {
-    return glfw_to_action(glfwGetMouseButton(glfw_.window.ptr, mouse_button_to_glfw(button)));
+glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_monitor_size(monitor_key_t mn) {
+    auto& monitor = glfw_.monitors.array[mn.value];
+    return {monitor.vidmode->width, monitor.vidmode->height};
 }
 
-glm::vec2 odin5::platform::window::glfw::window_api_spec::get_mouse_position() {
+glm::ivec2 odin5::platform::window::glfw::window_api_spec::get_monitor_position(monitor_key_t mn) {
+    auto& monitor = glfw_.monitors.array[mn.value];
+    int32_t x, y;
+    glfwGetMonitorPos(monitor.ptr, &x, &y);
+    return {x, y};
+}
+
+uint32_t odin5::platform::window::glfw::window_api_spec::get_monitor_refresh_rate(monitor_key_t mn) {
+    auto& monitor = glfw_.monitors.array[mn.value];
+    return monitor.vidmode->refreshRate;
+}
+
+odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::window_api_spec::key_state(window_key_t wn, window::enm::input::key_t key) {
+    auto& window = glfw_.windows[wn];
+    return glfw_to_action(glfwGetKey(window.ptr, key_to_glfw(key)));
+}
+
+odin5::platform::window::enm::input::action_t odin5::platform::window::glfw::window_api_spec::mouse_state(window_key_t wn, window::enm::input::mouse_button_t button) {
+    auto& window = glfw_.windows[wn];
+    return glfw_to_action(glfwGetMouseButton(window.ptr, mouse_button_to_glfw(button)));
+}
+
+glm::vec2 odin5::platform::window::glfw::window_api_spec::get_mouse_position(window_key_t wn) {
+    auto& window = glfw_.windows[wn];
     double x, y;
-    glfwGetCursorPos(glfw_.window.ptr, &x, &y);
+    glfwGetCursorPos(window.ptr, &x, &y);
     return {x, y};
 }
 
@@ -556,10 +591,10 @@ odin5::platform::window::glfw::window_api_spec::~window_api_spec() {
     terminate();
 }
 
-odin5::platform::window::glfw::window_t odin5::platform::window::glfw::window_api_spec::get_glfw_native_window() {
-    return glfw_.window.ptr;
+odin5::platform::window::glfw::window_t& odin5::platform::window::glfw::window_api_spec::get_glfw_native_window_t(window_key_t wn) {
+    return glfw_.windows[wn];
 }
 
-odin5::platform::window::glfw::monitor_t odin5::platform::window::glfw::window_api_spec::get_glfw_native_monitor() {
-    return glfw_.monitor.ptr;
+odin5::platform::window::glfw::monitor_t& odin5::platform::window::glfw::window_api_spec::get_glfw_native_monitor_t(monitor_key_t mn) {
+    return glfw_.monitors.array[mn.value];
 }

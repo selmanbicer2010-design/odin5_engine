@@ -1,3 +1,5 @@
+#include "platform/window/iwindowapi.hpp"
+#include "platform/window/windowapienum.hpp"
 #define GLFW_INCLUDE_VULKAN 1
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 1
@@ -192,21 +194,27 @@ namespace {
         vk_state.physical_device = std::move(physical_devices[selection_idx]);
     }
 
-    void create_surface(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api) {
+    void create_surface_khr(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api, vulkan::surface& sf) {
         if constexpr (odin5::platform::window::enm::active_window_api == odin5::platform::window::enm::window_api_identifiers::glfw) {
             VkSurfaceKHR c_surface; // Youre gonna make me touch the C api for this?!
-            if (glfwCreateWindowSurface(*vk_state.instance, window_api.get_glfw_native_window().ptr, nullptr, &c_surface) != VK_SUCCESS) {
+            if (glfwCreateWindowSurface(*vk_state.instance, window_api.get_glfw_native_window_t(sf.wn_key).ptr, nullptr, &c_surface) != VK_SUCCESS) {
                 odin5::util::throw_except<std::runtime_error>("failed to create window surface for vulkan");
             }
-            vk_state.surface = vk::raii::SurfaceKHR(vk_state.instance, c_surface); // Why does instance not have a method for this!!!
+            sf.surface_khr = vk::raii::SurfaceKHR(vk_state.instance, c_surface); // Why does instance not have a method for this!!!
         }
     }
 
     uint32_t logical_device_graphics_and_present_idx(vulkan_state_ref_t vk_state, const std::vector<vk::QueueFamilyProperties>& queue_family_properties) {
         uint32_t queue_idx = UINT32_MAX;
+        odin5::util::func_ptr_t<bool, vulkan_state_ref_t, uint32_t> predicate;
+        if constexpr (odin5::platform::window::enm::active_window_api == odin5::platform::window::enm::window_api_identifiers::glfw) {
+            auto p = [](vulkan_state_ref_t vk_state, uint32_t family)->bool{ return glfwGetPhysicalDevicePresentationSupport(*vk_state.instance, *vk_state.physical_device, family); };
+            predicate = p;
+        }
+
         for (uint32_t qfp_idx = 0; qfp_idx < queue_family_properties.size(); qfp_idx++)
         {
-            if ((queue_family_properties[qfp_idx].queueFlags & vk::QueueFlagBits::eGraphics) && vk_state.physical_device.getSurfaceSupportKHR(qfp_idx, *vk_state.surface)) {
+            if ((queue_family_properties[qfp_idx].queueFlags & vk::QueueFlagBits::eGraphics) && predicate(vk_state, qfp_idx)) {
               // found a queue family that supports both graphics and present
                 queue_idx = qfp_idx;
                 break;
@@ -279,13 +287,13 @@ namespace {
         return ret;
     }
 
-    vk::Extent2D choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities, odin5::platform::window::active_window_api& window_api) {
+    vk::Extent2D choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities, odin5::platform::window::active_window_api& window_api, vulkan::surface& sf) {
         if (capabilities.currentExtent.width != UINT32_MAX) {
             return capabilities.currentExtent;
         }
         int width, height;
         if constexpr (odin5::platform::window::enm::active_window_api == odin5::platform::window::enm::window_api_identifiers::glfw) {
-            glfwGetFramebufferSize(window_api.get_glfw_native_window().ptr, &width, &height);
+            glfwGetFramebufferSize(window_api.get_glfw_native_window_t(sf.wn_key).ptr, &width, &height);
         }
 
         return {
@@ -302,28 +310,31 @@ namespace {
         return minImageCount;
     }
 
+    void create_swap_chain_format(vulkan_state_ref_t vk_state, vulkan::surface& sf) {
+        std::vector<vk::SurfaceFormatKHR> available_formats = vk_state.physical_device.getSurfaceFormatsKHR(*sf.surface_khr);
+        vk_state.swap_chain_format = choose_swap_surface_format(available_formats);
+    }
+
     template <bool recreate_swapchain = false>
-    void create_swapchain(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api) {
-        vk::SurfaceCapabilitiesKHR surface_capabilities = vk_state.physical_device.getSurfaceCapabilitiesKHR(*vk_state.surface);
-        std::vector<vk::SurfaceFormatKHR> available_formats = vk_state.physical_device.getSurfaceFormatsKHR(*vk_state.surface);
-        std::vector<vk::PresentModeKHR> available_present_modes = vk_state.physical_device.getSurfacePresentModesKHR(*vk_state.surface);
+    void create_swapchain(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api, vulkan::surface& sf) {
+        vk::SurfaceCapabilitiesKHR surface_capabilities = vk_state.physical_device.getSurfaceCapabilitiesKHR(*sf.surface_khr);
+        std::vector<vk::PresentModeKHR> available_present_modes = vk_state.physical_device.getSurfacePresentModesKHR(*sf.surface_khr);
 
-        vk_state.swap_chain_extent = choose_swap_extent(surface_capabilities, window_api);
+        sf.swap_chain_extent = choose_swap_extent(surface_capabilities, window_api, sf);
 
-        if (vk_state.swap_chain_extent.width == 0u or vk_state.swap_chain_extent.height == 0u) {
+        if (sf.swap_chain_extent.width == 0u or sf.swap_chain_extent.height == 0u) {
             return;
         }
 
         uint32_t min_image_count = choose_swap_min_image_count(surface_capabilities);
-        vk_state.swap_chain_format = choose_swap_surface_format(available_formats);
         vk::PresentModeKHR swap_chain_present_mode = choose_swap_present_mode(available_present_modes);
 
         vk::SwapchainCreateInfoKHR swap_chain_create_info{
-            .surface          = *vk_state.surface,
+            .surface          = *sf.surface_khr,
             .minImageCount    = min_image_count,
             .imageFormat      = vk_state.swap_chain_format.format,
             .imageColorSpace  = vk_state.swap_chain_format.colorSpace,
-            .imageExtent      = vk_state.swap_chain_extent,
+            .imageExtent      = sf.swap_chain_extent,
             .imageArrayLayers = 1,
             .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
             .imageSharingMode = vk::SharingMode::eExclusive,
@@ -334,21 +345,21 @@ namespace {
         };
 
         if constexpr (recreate_swapchain) {
-            vk::raii::SwapchainKHR old_swapchain = std::move(vk_state.swap_chain);
+            vk::raii::SwapchainKHR old_swapchain = std::move(sf.swap_chain);
             swap_chain_create_info.oldSwapchain = *old_swapchain;
-            vk_state.swap_chain = vk_state.device.createSwapchainKHR(swap_chain_create_info);
+            sf.swap_chain = vk_state.device.createSwapchainKHR(swap_chain_create_info);
         }
         else {
             swap_chain_create_info.oldSwapchain = nullptr;
-            vk_state.swap_chain = vk_state.device.createSwapchainKHR(swap_chain_create_info);
+            sf.swap_chain = vk_state.device.createSwapchainKHR(swap_chain_create_info);
         }
 
-        vk_state.swap_chain_images = vk_state.swap_chain.getImages();
+        sf.swap_chain_images = sf.swap_chain.getImages();
 
     }
 
     template <bool recreate_swapchain = false>
-    void create_image_views(vulkan_state_ref_t vk_state) {
+    void create_image_views(vulkan_state_ref_t vk_state, vulkan::surface& sf) {
         vk::ImageViewCreateInfo image_view_create_info{
             .viewType = vk::ImageViewType::e2D,
             .format = vk_state.swap_chain_format.format,
@@ -356,19 +367,19 @@ namespace {
         };
 
         if constexpr (recreate_swapchain) {
-            vk_state.swap_chain_image_views.clear();
+            sf.swap_chain_image_views.clear();
         }
-        for (auto& image : vk_state.swap_chain_images) {
+        for (auto& image : sf.swap_chain_images) {
             image_view_create_info.image = image;
-             vk_state.swap_chain_image_views.emplace_back(vk_state.device, image_view_create_info);
+             sf.swap_chain_image_views.emplace_back(vk_state.device, image_view_create_info);
         }
 
     }
 
-    void recreate_swapchain(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api) {
+    void recreate_swapchain(vulkan_state_ref_t vk_state, odin5::platform::window::active_window_api& window_api, vulkan::surface& sf) {
         vk_state.device.waitIdle();
-        create_swapchain<true>(vk_state, window_api);
-        create_image_views<true>(vk_state);
+        create_swapchain<true>(vk_state, window_api, sf);
+        create_image_views<true>(vk_state, sf);
     }
 
     void create_descriptor_set_layout(vulkan_state_ref_t vk_state) {
@@ -414,13 +425,13 @@ namespace {
 
         vk::Viewport viewport{
             0.0f, 0.0f,
-            static_cast<float>(vk_state.swap_chain_extent.width), static_cast<float>(vk_state.swap_chain_extent.height),
+            1.f, 1.f,
             0.0f, 1.0f
         };
 
         vk::Rect2D scissor{
             vk::Offset2D{ 0, 0 },
-            vk_state.swap_chain_extent
+            vk::Extent2D{ 1, 1 }
         };
 
         std::vector<vk::DynamicState> dynamic_states {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
@@ -513,26 +524,25 @@ namespace {
 
     void create_memory_managers(vulkan_state_ref_t vk_state) {
         vk_state.memory_manager = vulkan::gpu_memory_manager{vk_state};
-        vk_state.memory_manager.uniform_buffer_memory.map();
         vk_state.resource_manager = vulkan::gpu_resource_manager{vk_state};
     }
 
     void create_descriptor_pool(vulkan_state_ref_t vk_state) {
-        vk::DescriptorPoolSize pool_size { .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = vulkan::FIF };
-        vk::DescriptorPoolCreateInfo pool_info { .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = vulkan::FIF, .poolSizeCount = 1, .pPoolSizes = &pool_size };
+        vk::DescriptorPoolSize pool_size { .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = vulkan::FIF * odin5::platform::window::enm::max_window_count };
+        vk::DescriptorPoolCreateInfo pool_info { .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = vulkan::FIF * odin5::platform::window::enm::max_window_count, .poolSizeCount = 1, .pPoolSizes = &pool_size };
         vk_state.descriptor_pool = vk_state.device.createDescriptorPool(pool_info);
     }
 
-    void create_descriptor_sets(vulkan_state_ref_t vk_state) {
-        std::vector<vk::DescriptorSetLayout> layouts{vulkan::FIF, *vk_state.descriptor_set_layout};
+    void create_descriptor_sets(vulkan_state_ref_t vk_state, vulkan::surface& sf) {
+        std::vector<vk::DescriptorSetLayout> layouts(vulkan::FIF, *vk_state.descriptor_set_layout);
         vk::DescriptorSetAllocateInfo alloc_info { .descriptorPool = *vk_state.descriptor_pool, .descriptorSetCount = static_cast<uint32_t>(layouts.size()), .pSetLayouts = layouts.data()};
 
         auto desc_sets = vk_state.device.allocateDescriptorSets(alloc_info);
         for (int32_t i {0}; i < vulkan::FIF; i++) {
-            vk_state.descriptor_sets[i] = std::move(desc_sets[i]);
-            vk::DescriptorBufferInfo buffer_info { .buffer = *vk_state.memory_manager.uniform_buffer_memory.query_buffer(vk_state.memory_manager.uniform_buffer_keys[i]), .offset = 0, .range = sizeof(vulkan::uniform_buffer_object)};
+            sf.descriptor_sets[i] = std::move(desc_sets[i]);
+            vk::DescriptorBufferInfo buffer_info { .buffer = *sf.uniform_buffer.query_buffer_at(i), .offset = 0, .range = sizeof(vulkan::uniform_buffer_object)};
             vk::WriteDescriptorSet descriptor_write {
-                .dstSet = vk_state.descriptor_sets[i],
+                .dstSet = sf.descriptor_sets[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -585,7 +595,7 @@ namespace {
         vk_state.command_pool = vk_state.device.createCommandPool(pool_info);
     }
 
-    void create_command_buffers(vulkan_state_ref_t vk_state) {
+    void create_command_buffers(vulkan_state_ref_t vk_state, vulkan::surface& sf) {
         vk::CommandBufferAllocateInfo alloc_info{
             .commandPool = vk_state.command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
@@ -593,22 +603,22 @@ namespace {
         };
         auto buffers = vk::raii::CommandBuffers(vk_state.device, alloc_info);
         for (size_t i = 0; i < vulkan::FIF; i++) {
-             vk_state.command_buffers[i] = std::move(buffers[i]);
+             sf.command_buffers[i] = std::move(buffers[i]);
         }
     }
 
-    void create_synchronization_objects(vulkan_state_ref_t vk_state) {
-        for (size_t i = 0; i < vk_state.swap_chain_images.size(); i++) {
-            vk_state.render_finished_semaphores.emplace_back(vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo()));
+    void create_synchronization_objects(vulkan_state_ref_t vk_state, vulkan::surface& sf) {
+        for (size_t i = 0; i < sf.swap_chain_images.size(); i++) {
+            sf.render_finished_semaphores.emplace_back(vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo()));
         }
         for (size_t i = 0; i < vulkan::FIF; i++) {
-            vk_state.present_complete_semaphores[i] = vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo{});
-            vk_state.flight_fences[i] = vk::raii::Fence(vk_state.device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+            sf.present_complete_semaphores[i] = vk::raii::Semaphore(vk_state.device, vk::SemaphoreCreateInfo{});
+            sf.flight_fences[i] = vk::raii::Fence(vk_state.device, {.flags = vk::FenceCreateFlagBits::eSignaled});
         }
 
     }
 
-    void transition_image_layout(vulkan_state_ref_t vk_state,
+    void transition_image_layout(vulkan_state_ref_t vk_state, vulkan::surface& sf,
 	    vk::ImageLayout old_layout, vk::ImageLayout new_layout,
 	    vk::AccessFlags2 src_access_mask, vk::AccessFlags2 dst_access_mask,
 	    vk::PipelineStageFlags2 src_stage_mask, vk::PipelineStageFlags2 dst_stage_mask) {
@@ -621,7 +631,7 @@ namespace {
             .newLayout = new_layout,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = vk_state.swap_chain_images[vk_state.image_index],
+            .image = sf.swap_chain_images[sf.image_index],
             .subresourceRange {
                 .aspectMask     = vk::ImageAspectFlagBits::eColor,
                 .baseMipLevel   = 0,
@@ -635,23 +645,23 @@ namespace {
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers = &barrier
         };
-        vk_state.command_buffers[vk_state.frame_index].pipelineBarrier2(dependency_info);
+        sf.command_buffers[sf.frame_index].pipelineBarrier2(dependency_info);
     }
 
-    void record_command_buffer(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic, draw_3d_submit_info_constref_t draw_info) {
-        auto& command_buffer = vk_state.command_buffers[vk_state.frame_index];
+    void record_command_buffer(vulkan_state_ref_t vk_state, vulkan::surface& sf, draw_3d_submit_info_constref_t draw_info) {
+        auto& command_buffer = sf.command_buffers[sf.frame_index];
         command_buffer.begin({});
 
         transition_image_layout(
-            vk_state,
+            vk_state, sf,
             vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
             {}, vk::AccessFlagBits2::eColorAttachmentWrite,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eColorAttachmentOutput
         );
 
-        vk::ClearValue clear_color = vk::ClearColorValue(dynamic.clear_color.x, dynamic.clear_color.y, dynamic.clear_color.z, dynamic.clear_color.w);
+        vk::ClearValue clear_color = vk::ClearColorValue(sf.dynamic_info.clear_color.x, sf.dynamic_info.clear_color.y, sf.dynamic_info.clear_color.z, sf.dynamic_info.clear_color.w);
         vk::RenderingAttachmentInfo attachment_info {
-            .imageView   = vk_state.swap_chain_image_views[vk_state.image_index],
+            .imageView   = sf.swap_chain_image_views[sf.image_index],
             .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
             .loadOp      = vk::AttachmentLoadOp::eClear,
             .storeOp     = vk::AttachmentStoreOp::eStore,
@@ -659,7 +669,7 @@ namespace {
         };
 
         vk::RenderingInfo rendering_info {
-            .renderArea = {.offset = {0, 0}, .extent = vk_state.swap_chain_extent},
+            .renderArea = {.offset = {0, 0}, .extent = sf.swap_chain_extent},
             .layerCount = 1,
             .colorAttachmentCount = 1,
             .pColorAttachments = &attachment_info
@@ -669,10 +679,10 @@ namespace {
 
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *vk_state.graphics_pipeline);
 
-        command_buffer.setViewport(0, vk::Viewport(dynamic.viewport.x, dynamic.viewport.y, dynamic.viewport.z, dynamic.viewport.w, 0.0f, 1.0f));
-        command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(dynamic.scissor.x, dynamic.scissor.y), vk::Extent2D(dynamic.scissor.z, dynamic.scissor.w)));
+        command_buffer.setViewport(0, vk::Viewport(sf.dynamic_info.viewport.x, sf.dynamic_info.viewport.y, sf.dynamic_info.viewport.z, sf.dynamic_info.viewport.w, 0.0f, 1.0f));
+        command_buffer.setScissor(0, vk::Rect2D(vk::Offset2D(sf.dynamic_info.scissor.x, sf.dynamic_info.scissor.y), vk::Extent2D(sf.dynamic_info.scissor.z, sf.dynamic_info.scissor.w)));
 
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *vk_state.pipeline_layout, 0, *vk_state.descriptor_sets[vk_state.frame_index], nullptr);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *vk_state.pipeline_layout, 0, *sf.descriptor_sets[sf.frame_index], nullptr);
 
         for (auto& draw : draw_info) {
             auto& mesh_buffer_keys = vk_state.resource_manager.meshes[draw.mesh_idx];
@@ -686,7 +696,7 @@ namespace {
         command_buffer.endRendering();
 
         transition_image_layout(
-            vk_state,
+            vk_state, sf,
             vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
             vk::AccessFlagBits2::eColorAttachmentWrite, {},
             vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe
@@ -695,53 +705,53 @@ namespace {
         command_buffer.end();
     }
 
-    void draw_frame(vulkan_state_ref_t vk_state, graphics_dynamic_info_ref_t dynamic, draw_3d_submit_info_constref_t draw_info) {
-        auto& fence = vk_state.flight_fences[vk_state.frame_index];
+    void draw_frame(vulkan_state_ref_t vk_state, vulkan::surface& sf, draw_3d_submit_info_constref_t draw_info) {
+        auto& fence = sf.flight_fences[sf.frame_index];
         auto fence_result = vk_state.device.waitForFences(*fence, vk::True, UINT64_MAX);
         if (fence_result != vk::Result::eSuccess) {
             odin5::util::throw_except<std::runtime_error>("failed to wait for fence");
         }
         vk_state.device.resetFences(*fence);
 
-        auto [result, img_idx] = vk_state.swap_chain.acquireNextImage(UINT64_MAX, *vk_state.present_complete_semaphores[vk_state.frame_index], nullptr);
-        vk_state.image_index = img_idx;
+        auto [result, img_idx] = sf.swap_chain.acquireNextImage(UINT64_MAX, *sf.present_complete_semaphores[sf.frame_index], nullptr);
+        sf.image_index = img_idx;
         if (result != vk::Result::eSuccess and result != vk::Result::eSuboptimalKHR) {
             return;
         }
 
         vulkan::uniform_buffer_object ubo{
             .model = glm::identity<glm::mat4>(),
-            .view = dynamic.view_3d,
-            .proj = dynamic.proj_3d,
+            .view = sf.dynamic_info.view_3d,
+            .proj = sf.dynamic_info.proj_3d,
         };
-        vk_state.memory_manager.uniform_buffer_memory.write_into_buffer(vk_state.memory_manager.uniform_buffer_keys[vk_state.frame_index], &ubo);
-        vk_state.command_buffers[vk_state.frame_index].reset();
-        record_command_buffer(vk_state, dynamic, draw_info);
+        sf.uniform_buffer.write_into_memory_at(sf.frame_index, ubo);
+        sf.command_buffers[sf.frame_index].reset();
+        record_command_buffer(vk_state, sf, draw_info);
 
         vk::PipelineStageFlags wait_destination_stage_mask{vk::PipelineStageFlagBits::eColorAttachmentOutput};
         const vk::SubmitInfo submit_info {
             .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = &*vk_state.present_complete_semaphores[vk_state.frame_index],
+            .pWaitSemaphores      = &*sf.present_complete_semaphores[sf.frame_index],
             .pWaitDstStageMask    = &wait_destination_stage_mask,
             .commandBufferCount   = 1,
-            .pCommandBuffers      = &*vk_state.command_buffers[vk_state.frame_index],
+            .pCommandBuffers      = &*sf.command_buffers[sf.frame_index],
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = &*vk_state.render_finished_semaphores[vk_state.image_index]
+            .pSignalSemaphores    = &*sf.render_finished_semaphores[sf.image_index]
         };
 
         vk_state.queue.submit(submit_info, *fence);
 
         const vk::PresentInfoKHR present_info_KHR {
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &*vk_state.render_finished_semaphores[vk_state.image_index],
+            .pWaitSemaphores    = &*sf.render_finished_semaphores[sf.image_index],
             .swapchainCount     = 1,
-            .pSwapchains        = &*vk_state.swap_chain,
-            .pImageIndices      = &vk_state.image_index
+            .pSwapchains        = &*sf.swap_chain,
+            .pImageIndices      = &sf.image_index
         };
 
         result = vk_state.queue.presentKHR(present_info_KHR);
 
-        vk_state.frame_index = (vk_state.frame_index + 1) % vulkan::FIF;
+        sf.frame_index = (sf.frame_index + 1) % vulkan::FIF;
     }
 
 }
@@ -841,20 +851,7 @@ vulkan::gpu_allocated_memory::~gpu_allocated_memory() {
     unmap();
 }
 
-vulkan::gpu_memory_manager::gpu_memory_manager(vulkan_state& vk_state) : vk_state(&vk_state) {
-    gpu_buffer_create_info create_info{
-        .byte_size = 128,
-        .usage = vk::BufferUsageFlagBits::eTransferSrc,
-        .properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-        .element_count = 1,
-        .data = nullptr,
-    };
-    gpu_buffer buffer = {vk_state, create_info};
-    auto staging_memory_alloc_info = buffer.alloc_info;
-    staging_memory_alloc_info.allocationSize = DEFAULT_ALLOCATION_SIZE;
-    staging_memory = {vk_state, staging_memory_alloc_info};
-    staging_memory.wipe();
-
+vulkan::gpu_uniform_buffer_memory::gpu_uniform_buffer_memory(vulkan_state_ref_t vk_state) {
     std::array<gpu_buffer, vulkan::FIF> buffers = odin5::util::construct_array_as<gpu_buffer, std::nullptr_t>(std::make_index_sequence<vulkan::FIF>());
     gpu_buffer_create_info uniform_buffer_create_info {
         .byte_size = sizeof(uniform_buffer_object),
@@ -868,10 +865,26 @@ vulkan::gpu_memory_manager::gpu_memory_manager(vulkan_state& vk_state) : vk_stat
     }
     auto uniform_memory_alloc_info = buffers[0].alloc_info;
     uniform_memory_alloc_info.allocationSize = odin5::math::align_up_to(buffers[0].mem_reqs.size, buffers[0].mem_reqs.alignment) * vulkan::FIF;
-    uniform_buffer_memory = {vk_state, uniform_memory_alloc_info};
+    memory = {vk_state, uniform_memory_alloc_info};
     for (size_t i = 0; i < vulkan::FIF; i++) {
-        uniform_buffer_keys[i] = uniform_buffer_memory.insert_buffer(std::move(buffers[i]));
+        keys[i] = memory.insert_buffer(std::move(buffers[i]));
     }
+    memory.map();
+}
+
+vulkan::gpu_memory_manager::gpu_memory_manager(vulkan_state& vk_state) : vk_state(&vk_state) {
+    gpu_buffer_create_info create_info{
+        .byte_size = 128,
+        .usage = vk::BufferUsageFlagBits::eTransferSrc,
+        .properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+        .element_count = 1,
+        .data = nullptr,
+    };
+    gpu_buffer buffer = {vk_state, create_info};
+    auto staging_memory_alloc_info = buffer.alloc_info;
+    staging_memory_alloc_info.allocationSize = DEFAULT_ALLOCATION_SIZE;
+    staging_memory = {vk_state, staging_memory_alloc_info};
+    staging_memory.wipe();
 };
 
 vulkan::memory_key_t vulkan::gpu_memory_manager::get_matching_memory(const gpu_buffer& buffer) {
@@ -962,51 +975,75 @@ vulkan::graphics_api_spec::graphics_api_spec(graphics_create_info gci, odin5::pl
     create_instance(vulkan_, gci);
     create_debug_msgr(vulkan_); // runs fully only when in debug
     pick_physical_device(vulkan_);
-    create_surface(vulkan_, window_api);
     create_logical_device(vulkan_);
-    create_swapchain(vulkan_, window_api);
-    create_image_views(vulkan_);
     create_descriptor_set_layout(vulkan_);
-    create_graphics_pipeline(vulkan_);
-    create_memory_managers(vulkan_);
-    create_descriptor_pool(vulkan_);
-    create_descriptor_sets(vulkan_);
-    create_command_pool(vulkan_);
-    create_command_buffers(vulkan_);
-    create_synchronization_objects(vulkan_);
 }
 
-void vulkan::graphics_api_spec::set_viewport(glm::vec4 vp) {
-    dynamic_info.viewport = vp;
+surface_key_t vulkan::graphics_api_spec::create_surface(window::window_key_t wn) {
+    auto key = vulkan_.surfaces.push(vulkan::surface{});
+    auto& surface = vulkan_.surfaces[key];
+    surface.wn_key = wn;
+    create_surface_khr(vulkan_, *window_api_p, surface);
+    if (first_window) {
+        first_window = false;
+        create_swap_chain_format(vulkan_, surface);
+        create_graphics_pipeline(vulkan_);
+        create_memory_managers(vulkan_);
+        create_descriptor_pool(vulkan_);
+        create_command_pool(vulkan_);
+    }
+    surface.uniform_buffer = gpu_uniform_buffer_memory{vulkan_};
+    create_command_buffers(vulkan_, surface);
+    create_swapchain(vulkan_, *window_api_p, surface);
+    create_image_views(vulkan_, surface);
+    create_descriptor_sets(vulkan_, surface);
+    create_synchronization_objects(vulkan_, surface);
+    return key;
 }
 
-void vulkan::graphics_api_spec::set_scissor(glm::vec4 sc) {
-    dynamic_info.scissor = sc;
+void vulkan::graphics_api_spec::destroy_surface(surface_key_t sf) {
+    vulkan_.surfaces.erase(sf);
 }
 
-void vulkan::graphics_api_spec::set_viewport_and_scissor(glm::vec4 vp) {
-    dynamic_info.viewport = vp;
-    dynamic_info.scissor = vp;
+void vulkan::graphics_api_spec::set_viewport(surface_key_t sf, glm::vec4 vp) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.viewport = vp;
 }
 
-void vulkan::graphics_api_spec::set_view_3d(glm::mat4 view) {
-    dynamic_info.view_3d = view;
+void vulkan::graphics_api_spec::set_scissor(surface_key_t sf, glm::vec4 sc) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.scissor = sc;
 }
 
-void vulkan::graphics_api_spec::set_proj_3d(glm::mat4 proj) {
-    dynamic_info.proj_3d = proj;
+void vulkan::graphics_api_spec::set_viewport_and_scissor(surface_key_t sf, glm::vec4 vp) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.viewport = vp;
+    surface.dynamic_info.scissor = vp;
 }
 
-void vulkan::graphics_api_spec::set_clear_color(glm::vec4 clear) {
-    dynamic_info.clear_color = clear;
+void vulkan::graphics_api_spec::set_view_3d(surface_key_t sf, glm::mat4 view) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.view_3d = view;
 }
 
-void vulkan::graphics_api_spec::draw(draw_3d_submit_info_constref_t draw_info) {
-    draw_frame(vulkan_, dynamic_info, draw_info);
+void vulkan::graphics_api_spec::set_proj_3d(surface_key_t sf, glm::mat4 proj) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.proj_3d = proj;
 }
 
-void vulkan::graphics_api_spec::framebuffer_resized() {
-    recreate_swapchain(vulkan_, *window_api_p);
+void vulkan::graphics_api_spec::set_clear_color(surface_key_t sf, glm::vec4 clear) {
+    auto& surface = vulkan_.surfaces[sf];
+    surface.dynamic_info.clear_color = clear;
+}
+
+void vulkan::graphics_api_spec::draw(surface_key_t sf, draw_3d_submit_info_constref_t draw_info) {
+    auto& surface = vulkan_.surfaces[sf];
+    draw_frame(vulkan_, surface, draw_info);
+}
+
+void vulkan::graphics_api_spec::framebuffer_resized(surface_key_t sf) {
+    auto& surface = vulkan_.surfaces[sf];
+    recreate_swapchain(vulkan_, *window_api_p, surface);
 }
 
 mesh_idx_t vulkan::graphics_api_spec::upload_mesh(const std::vector<odin5::math::spatial::vertex>& vertices, const std::vector<uint32_t>& indices) {

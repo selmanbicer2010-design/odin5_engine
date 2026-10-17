@@ -1,8 +1,32 @@
 [
 {
   "directory": "C:/ZedProjects/odin5/build/debug",
-  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\main\\main.cpp.obj -c C:\\ZedProjects\\odin5\\src\\main\\main.cpp",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -Wconversion -Wshadow -g -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\main\\main.cpp.obj -c C:\\ZedProjects\\odin5\\src\\main\\main.cpp",
   "file": "C:/ZedProjects/odin5/src/main/main.cpp",
   "output": "C:/ZedProjects/odin5/build/debug/CMakeFiles/odin.dir/src/main/main.cpp.obj"
+},
+{
+  "directory": "C:/ZedProjects/odin5/build/debug",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -Wconversion -Wshadow -g -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\platform\\graphics\\vulkangraphicsapi.cpp.obj -c C:\\ZedProjects\\odin5\\src\\platform\\graphics\\vulkangraphicsapi.cpp",
+  "file": "C:/ZedProjects/odin5/src/platform/graphics/vulkangraphicsapi.cpp",
+  "output": "C:/ZedProjects/odin5/build/debug/CMakeFiles/odin.dir/src/platform/graphics/vulkangraphicsapi.cpp.obj"
+},
+{
+  "directory": "C:/ZedProjects/odin5/build/debug",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -Wconversion -Wshadow -g -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\platform\\window\\glfwwindowapi.cpp.obj -c C:\\ZedProjects\\odin5\\src\\platform\\window\\glfwwindowapi.cpp",
+  "file": "C:/ZedProjects/odin5/src/platform/window/glfwwindowapi.cpp",
+  "output": "C:/ZedProjects/odin5/build/debug/CMakeFiles/odin.dir/src/platform/window/glfwwindowapi.cpp.obj"
+},
+{
+  "directory": "C:/ZedProjects/odin5/build/debug",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -Wconversion -Wshadow -g -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\core\\file.cpp.obj -c C:\\ZedProjects\\odin5\\src\\core\\file.cpp",
+  "file": "C:/ZedProjects/odin5/src/core/file.cpp",
+  "output": "C:/ZedProjects/odin5/build/debug/CMakeFiles/odin.dir/src/core/file.cpp.obj"
+},
+{
+  "directory": "C:/ZedProjects/odin5/build/debug",
+  "command": "\"C:\\Program Files\\LLVM\\bin\\clang++.exe\" -DGLFW_DLL -IC:/ZedProjects/odin5/include -isystem C:/ZedProjects/odin5/build/debug/vcpkg_installed/x64-windows/include -DODIN5_DEBUG -Wall -Wextra -Wconversion -Wshadow -g -O0 -g -Xclang -gcodeview -std=c++23 -D_DEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrtd -o CMakeFiles\\odin.dir\\src\\core\\math\\spatial.cpp.obj -c C:\\ZedProjects\\odin5\\src\\core\\math\\spatial.cpp",
+  "file": "C:/ZedProjects/odin5/src/core/math/spatial.cpp",
+  "output": "C:/ZedProjects/odin5/build/debug/CMakeFiles/odin.dir/src/core/math/spatial.cpp.obj"
 }
 ]

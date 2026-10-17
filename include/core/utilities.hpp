@@ -235,6 +235,9 @@ namespace util{
         const value_type& operator[](integer_like_t hash) const {
             return data_.at(static_cast<int32_t>(hash));
         }
+        value_type& operator[](integer_like_t hash) {
+            return data_.at(static_cast<int32_t>(hash));
+        }
         const value_type* find(integer_like_t key) const {
             auto it = data_.find(static_cast<int32_t>(key));
             if (it != data_.end()) {
